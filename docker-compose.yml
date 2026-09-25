@@ -5,12 +5,26 @@ services:
       - "4566:4566"
     environment:
       - SERVICES=dynamodb,sqs
+    profiles: ["obs", "sim"]
 
   order-service:
     build: ./services/order-service
+    profiles: ["obs", "sim"]
+    depends_on: [floci]
+
   nginx:
     image: nginx:alpine
     ports:
       - "8080:80"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    # Adding profiles to nginx
+    profiles: ["obs", "sim"]
+    # Adding depends_on to nginx
+    depends_on:
+      - order-service
+    
+  otel-lgtm:
+    image: grafana/otel-lgtm
+    profiles: ["obs"]
+    ports: ["3000:3000", "4317:4317", "4318:4318"]

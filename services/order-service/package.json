@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1138.0",
+    "@incidentlab/runtime": "*",
     "express": "^5.2.1"
   }
 }

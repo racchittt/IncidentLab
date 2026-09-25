@@ -1,1 +1,7 @@
-{ "private": true, "workspaces": ["services/*"] }
+{
+  "private": true,
+  "workspaces": ["services/*"],
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}

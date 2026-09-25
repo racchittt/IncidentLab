@@ -7,6 +7,7 @@ import {
   PutItemCommand,
   GetItemCommand,
 } from "@aws-sdk/client-dynamodb";
+import { SQSClient, CreateQueueCommand, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { logger } from "@incidentlab/runtime/src/logger";
 import { latencyFaultMiddleware, setLatencyFault } from "./faults/latency";
 
@@ -14,7 +15,19 @@ const app: Application = express();
 const PORT: number = 3001;
 
 const ddb = new DynamoDBClient({});
+const sqs = new SQSClient({ useQueueUrlAsEndpoint: false });
 const ORDERS_TABLE = "orders";
+const ORDERS_PLACED_QUEUE = "orders-placed";
+
+let ordersPlacedQueueUrl: string;
+
+async function ensureOrdersPlacedQueue(): Promise<void> {
+  const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
+  if (!QueueUrl) {
+    throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
+  }
+  ordersPlacedQueueUrl = QueueUrl;
+}
 
 interface OrderParams {
   id: string;
@@ -59,6 +72,13 @@ app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
     })
   );
 
+  await sqs.send(
+    new SendMessageCommand({
+      QueueUrl: ordersPlacedQueueUrl,
+      MessageBody: JSON.stringify({ eventType: "OrderPlaced", orderId }),
+    })
+  );
+
   logger.info({ orderId }, "order created");
   res.status(201).json({ orderId, status: "created" });
 });
@@ -98,6 +118,6 @@ app.post("/admin/reset-fault", (req: Request, res: Response) => {
   res.sendStatus(200);
 });
 
-ensureOrdersTable().then(() => {
+Promise.all([ensureOrdersTable(), ensureOrdersPlacedQueue()]).then(() => {
   app.listen(PORT, () => logger.info(`order-service on ${PORT}`));
 });

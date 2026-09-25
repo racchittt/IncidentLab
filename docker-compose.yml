@@ -21,6 +21,20 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
 
+  worker-service:
+    build:
+      context: .
+      dockerfile: services/worker-service/Dockerfile
+    profiles: ["obs", "sim"]
+    depends_on: [floci]
+    environment:
+      - OTEL_SERVICE_NAME=worker-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - AWS_ENDPOINT_URL=http://floci:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+
   nginx:
     image: nginx:alpine
     ports:

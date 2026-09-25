@@ -1,19 +1,13 @@
 {
-  "name": "order-service",
+  "name": "worker-service",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1138.0",
     "@aws-sdk/client-sqs": "^3.1138.0",
     "@incidentlab/runtime": "*",
-    "express": "^5.2.1"
+    "@opentelemetry/api": "^1.9.1"
   }
 }

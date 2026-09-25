@@ -1,0 +1,188 @@
+{
+  "backend": "jev",
+  "accuracy": 1.0,
+  "valid_json_rate": 1.0,
+  "avg_seconds": 0.36195,
+  "results": [
+    {
+      "incident_id": "INC-01",
+      "symptom": "Order latency +300%, no metrics pulled yet.",
+      "expected": "query_metrics",
+      "answer": "query_metrics",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.897
+    },
+    {
+      "incident_id": "INC-03",
+      "symptom": "Payment service investigation just started, nothing checked so far.",
+      "expected": "query_metrics",
+      "answer": "query_metrics",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.323
+    },
+    {
+      "incident_id": "INC-04",
+      "symptom": "Auth service alert fired, agent hasn't queried any telemetry yet.",
+      "expected": "query_metrics",
+      "answer": "query_metrics",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.326
+    },
+    {
+      "incident_id": "INC-05",
+      "symptom": "Worker queue backlog growing, no metrics gathered.",
+      "expected": "query_metrics",
+      "answer": "query_metrics",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.321
+    },
+    {
+      "incident_id": "INC-06",
+      "symptom": "New incident opened for order-service 5xx spike, zero tool calls made.",
+      "expected": "query_metrics",
+      "answer": "query_metrics",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.34
+    },
+    {
+      "incident_id": "INC-07",
+      "symptom": "Incident just triaged, agent hasn't looked at any metrics dashboards yet.",
+      "expected": "query_metrics",
+      "answer": "query_metrics",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.372
+    },
+    {
+      "incident_id": "INC-08",
+      "symptom": "No telemetry queried so far for this newly opened incident.",
+      "expected": "query_metrics",
+      "answer": "query_metrics",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.313
+    },
+    {
+      "incident_id": "INC-02",
+      "symptom": "CPU metrics show a spike at 14:02 but the cause of the spike is unclear, need log detail.",
+      "expected": "query_logs",
+      "answer": "query_logs",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.316
+    },
+    {
+      "incident_id": "INC-09",
+      "symptom": "Metrics reveal DynamoDB write latency anomaly; need logs to see which requests are failing.",
+      "expected": "query_logs",
+      "answer": "query_logs",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.306
+    },
+    {
+      "incident_id": "INC-10",
+      "symptom": "Throughput graph shows a cliff at deploy time, logs needed to confirm which service caused it.",
+      "expected": "query_logs",
+      "answer": "query_logs",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.314
+    },
+    {
+      "incident_id": "INC-11",
+      "symptom": "Error rate metric spiked 20x, no log lines pulled yet to see the actual exception.",
+      "expected": "query_logs",
+      "answer": "query_logs",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.358
+    },
+    {
+      "incident_id": "INC-12",
+      "symptom": "Metrics show retry count anomaly, but the specific failing endpoint isn't clear without logs.",
+      "expected": "query_logs",
+      "answer": "query_logs",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.336
+    },
+    {
+      "incident_id": "INC-13",
+      "symptom": "Metrics show an anomaly in queue depth, but need log detail to identify the message causing it.",
+      "expected": "query_logs",
+      "answer": "query_logs",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.379
+    },
+    {
+      "incident_id": "INC-14",
+      "symptom": "Anomalous latency in metrics dashboard, logs not checked yet to isolate the request.",
+      "expected": "query_logs",
+      "answer": "query_logs",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.326
+    },
+    {
+      "incident_id": "INC-15",
+      "symptom": "Root cause confirmed: connection pool exhaustion in payment-service after the 14:00 deploy.",
+      "expected": "finish",
+      "answer": "finish",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.354
+    },
+    {
+      "incident_id": "INC-01",
+      "symptom": "Logs and metrics both confirm the retry storm was caused by a misconfigured timeout.",
+      "expected": "finish",
+      "answer": "finish",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.334
+    },
+    {
+      "incident_id": "INC-02",
+      "symptom": "Investigation complete, root cause is the DynamoDB throttle from the provisioned capacity limit.",
+      "expected": "finish",
+      "answer": "finish",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.334
+    },
+    {
+      "incident_id": "INC-16",
+      "symptom": "Root cause already confirmed: cache stampede after ElastiCache eviction.",
+      "expected": "finish",
+      "answer": "finish",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.322
+    },
+    {
+      "incident_id": "INC-17",
+      "symptom": "Confirmed root cause: worker-service memory leak causing OOM restarts.",
+      "expected": "finish",
+      "answer": "finish",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.342
+    },
+    {
+      "incident_id": "INC-18",
+      "symptom": "Root cause is confirmed and documented: RDS connection leak from a missing pool release.",
+      "expected": "finish",
+      "answer": "finish",
+      "correct": true,
+      "valid_json": true,
+      "seconds": 0.326
+    }
+  ]
+}

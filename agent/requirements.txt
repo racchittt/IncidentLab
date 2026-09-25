@@ -1,0 +1,4 @@
+laya
+jev-lite
+python-dotenv
+ollama

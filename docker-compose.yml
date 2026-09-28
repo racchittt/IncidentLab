@@ -5,13 +5,13 @@ services:
       - "4566:4566"
     environment:
       - SERVICES=dynamodb,sqs
-    profiles: ["obs", "sim"]
+    profiles: ["sim"]
 
   order-service:
     build:
       context: .
       dockerfile: services/order-service/Dockerfile
-    profiles: ["obs", "sim"]
+    profiles: ["sim"]
     depends_on: [floci]
     environment:
       - OTEL_SERVICE_NAME=order-service
@@ -25,7 +25,7 @@ services:
     build:
       context: .
       dockerfile: services/worker-service/Dockerfile
-    profiles: ["obs", "sim"]
+    profiles: ["sim"]
     depends_on: [floci]
     environment:
       - OTEL_SERVICE_NAME=worker-service
@@ -41,12 +41,10 @@ services:
       - "8080:80"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
-    # Adding profiles to nginx
-    profiles: ["obs", "sim"]
-    # Adding depends_on to nginx
+    profiles: ["sim"]
     depends_on:
       - order-service
-    
+
   otel-lgtm:
     image: grafana/otel-lgtm
     profiles: ["obs"]

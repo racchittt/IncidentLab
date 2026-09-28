@@ -6,6 +6,7 @@ import { getConfig } from "@incidentlab/runtime/src/resilience/config";
 import { retry } from "@incidentlab/runtime/src/resilience/retry";
 import { withTimeout } from "@incidentlab/runtime/src/resilience/timeout";
 import { CircuitBreaker } from "@incidentlab/runtime/src/resilience/circuitBreaker";
+import { retryAttempts, providerDuration, registerCircuitStateGauge, registerDbPoolGauges } from "./metrics";
 
 const app: Application = express();
 const PORT = 3003;
@@ -22,6 +23,9 @@ const breaker = new CircuitBreaker({
   openMs: getConfig().breakerOpenMs,
   onStateChange: (from, to) => logger.info({ from, to }, "circuit breaker state changed"),
 });
+
+registerCircuitStateGauge(breaker);
+registerDbPoolGauges(pool);
 
 interface ProviderResponse {
   ref: string;
@@ -40,6 +44,8 @@ app.post("/charges", async (req: Request, res: Response) => {
   // swapping getConfig()'s implementation for a live deploy-registry read (planned
   // for Milestone 4) a one-line change instead of a rewrite of every call site.
   const cfg = getConfig();
+
+  const startedAt = Date.now();
 
   try {
     const { ref } = await breaker.execute(() =>
@@ -63,11 +69,16 @@ app.post("/charges", async (req: Request, res: Response) => {
           maxAttempts: cfg.retryMaxAttempts,
           baseMs: cfg.retryBaseMs,
           jitter: cfg.retryJitter,
-          onAttempt: ({ attempt, delayMs, error }) =>
-            logger.warn({ orderId, attempt, delayMs, err: error }, "retrying provider charge"),
+          onAttempt: ({ attempt, delayMs, error }) => {
+            retryAttempts.add(1, { outcome: "retry" });
+            logger.warn({ orderId, attempt, delayMs, err: error }, "retrying provider charge");
+          },
         }
       )
     );
+
+    retryAttempts.add(1, { outcome: "success" });
+    providerDuration.record(Date.now() - startedAt);
 
     await pool.query(
       `INSERT INTO payments (order_id, amount_cents, status, provider_ref)
@@ -79,6 +90,8 @@ app.post("/charges", async (req: Request, res: Response) => {
     logger.info({ orderId, ref }, "payment charged");
     res.status(201).json({ orderId, status: "charged", ref });
   } catch (error: unknown) {
+    retryAttempts.add(1, { outcome: "giveup" });
+    providerDuration.record(Date.now() - startedAt);
     logger.error({ orderId, err: error }, "charge failed");
     res.sendStatus(503);
   }

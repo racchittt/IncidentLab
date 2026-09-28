@@ -16,6 +16,7 @@ const tracer = trace.getTracer("worker-service");
 
 const ORDERS_TABLE = "orders";
 const ORDERS_PLACED_QUEUE = "orders-placed";
+const MAX_RECEIVE_COUNT = 3;
 
 async function fulfillOrder(orderId: string): Promise<void> {
   try {
@@ -73,12 +74,29 @@ async function main(): Promise<void> {
         QueueUrl,
         WaitTimeSeconds: 10,
         MessageAttributeNames: ["All"],
+        MessageSystemAttributeNames: ["ApproximateReceiveCount"],
       })
     );
 
     for (const message of Messages ?? []) {
-      await processMessage(message);
-      await sqs.send(new DeleteMessageCommand({ QueueUrl, ReceiptHandle: message.ReceiptHandle }));
+      try {
+        await processMessage(message);
+        await sqs.send(new DeleteMessageCommand({ QueueUrl, ReceiptHandle: message.ReceiptHandle }));
+      } catch (error: unknown) {
+        const receiveCount = Number(message.Attributes?.ApproximateReceiveCount ?? "1");
+        logger.error(
+          { err: error, messageId: message.MessageId, receiveCount },
+          "failed to process message"
+        );
+
+        // A poison message (bad JSON, missing orderId, ...) would otherwise be
+        // redelivered and crash this loop forever. Give it a few tries in case the
+        // failure is transient, then give up and drop it instead of crash-looping.
+        if (receiveCount >= MAX_RECEIVE_COUNT) {
+          logger.error({ messageId: message.MessageId }, "giving up on poison message, deleting unprocessed");
+          await sqs.send(new DeleteMessageCommand({ QueueUrl, ReceiptHandle: message.ReceiptHandle }));
+        }
+      }
     }
   }
 }

@@ -21,6 +21,9 @@ const ORDERS_TABLE = "orders";
 const ORDERS_PLACED_QUEUE = "orders-placed";
 const ORDERS_PLACED_DLQ = "orders-placed-dlq";
 const MAX_RECEIVE_COUNT = 3;
+// SQS caps a single ReceiveMessage at 10; concurrency beyond that needs more
+// frequent receives, not a bigger batch.
+const WORKER_CONCURRENCY = Math.min(Number(process.env.WORKER_CONCURRENCY ?? "5"), 10);
 
 const PAYMENT_SERVICE_URL = "http://payment-service:3003/charges";
 
@@ -79,6 +82,23 @@ async function processMessage(message: Message): Promise<void> {
   });
 }
 
+async function handleMessage(queueUrl: string, message: Message): Promise<void> {
+  try {
+    await processMessage(message);
+    await sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: message.ReceiptHandle }));
+  } catch (error: unknown) {
+    const receiveCount = Number(message.Attributes?.ApproximateReceiveCount ?? "1");
+    logger.error(
+      { err: error, messageId: message.MessageId, receiveCount },
+      "failed to process message, leaving for redelivery"
+    );
+    // Don't delete: a transient failure gets retried when the message becomes
+    // visible again, and a genuine poison message gets moved to
+    // orders-placed-dlq automatically once it hits MAX_RECEIVE_COUNT (SQS's own
+    // RedrivePolicy, set up in ensureDlqRedrivePolicy - no manual counting needed).
+  }
+}
+
 async function ensureDlqRedrivePolicy(sourceQueueUrl: string): Promise<void> {
   const { QueueUrl: dlqUrl } = await waitFor(
     () => sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_DLQ })),
@@ -129,34 +149,20 @@ async function main(): Promise<void> {
   // message we failed to process, and let redelivery run its course.
   await ensureDlqRedrivePolicy(QueueUrl);
 
-  logger.info("worker-service started");
+  logger.info({ concurrency: WORKER_CONCURRENCY }, "worker-service started");
 
   while (true) {
     const { Messages } = await sqs.send(
       new ReceiveMessageCommand({
         QueueUrl,
         WaitTimeSeconds: 10,
+        MaxNumberOfMessages: WORKER_CONCURRENCY,
         MessageAttributeNames: ["All"],
         MessageSystemAttributeNames: ["ApproximateReceiveCount"],
       })
     );
 
-    for (const message of Messages ?? []) {
-      try {
-        await processMessage(message);
-        await sqs.send(new DeleteMessageCommand({ QueueUrl, ReceiptHandle: message.ReceiptHandle }));
-      } catch (error: unknown) {
-        const receiveCount = Number(message.Attributes?.ApproximateReceiveCount ?? "1");
-        logger.error(
-          { err: error, messageId: message.MessageId, receiveCount },
-          "failed to process message, leaving for redelivery"
-        );
-        // Don't delete: a transient failure gets retried when the message becomes
-        // visible again, and a genuine poison message gets moved to
-        // orders-placed-dlq automatically once it hits MAX_RECEIVE_COUNT (SQS's own
-        // RedrivePolicy, set up in ensureDlqRedrivePolicy - no manual counting needed).
-      }
-    }
+    await Promise.allSettled((Messages ?? []).map((message) => handleMessage(QueueUrl, message)));
   }
 }
 

@@ -40,6 +40,7 @@ services:
       - AWS_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
+      - WORKER_CONCURRENCY=5
 
   nginx:
     image: nginx:alpine
@@ -117,4 +118,4 @@ services:
   otel-lgtm:
     image: grafana/otel-lgtm
     profiles: ["obs"]
-    ports: ["3000:3000", "4317:4317", "4318:4318"]
+    ports: ["3000:3000", "4317:4317", "4318:4318", "9090:9090", "3100:3100", "3200:3200"]

@@ -16,6 +16,7 @@ CREATE TABLE configs (
   service TEXT PRIMARY KEY,
   version INT NOT NULL,
   config JSONB NOT NULL,
+  last_change_id TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 

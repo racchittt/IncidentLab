@@ -15,12 +15,17 @@ export const providerDuration = meter.createHistogram("payment.provider.duration
 
 const STATE_TO_NUMBER = { closed: 0, "half-open": 1, open: 2 } as const;
 
-export function registerCircuitStateGauge(breaker: CircuitBreaker): void {
+/**
+ * Takes a getter rather than the breaker itself: the breaker gets rebuilt in place
+ * when threshold/openMs change (a "hot" config key), and the gauge needs to keep
+ * reading whichever instance is current, not the one that existed at registration.
+ */
+export function registerCircuitStateGauge(getBreaker: () => CircuitBreaker): void {
   const gauge = meter.createObservableGauge("payment.circuit.state", {
     description: "0 = closed, 1 = half-open, 2 = open",
   });
   gauge.addCallback((result) => {
-    result.observe(STATE_TO_NUMBER[breaker.getState()]);
+    result.observe(STATE_TO_NUMBER[getBreaker().getState()]);
   });
 }
 

@@ -65,9 +65,10 @@ app.post("/deploys", async (req: Request, res: Response) => {
   const changeId = `chg-${String(seqRows[0].n).padStart(4, "0")}`;
 
   await pool.query(
-    `INSERT INTO configs (service, version, config, updated_at) VALUES ($1, $2, $3, now())
-     ON CONFLICT (service) DO UPDATE SET version = $2, config = $3, updated_at = now()`,
-    [service, newVersion, config]
+    `INSERT INTO configs (service, version, config, last_change_id, updated_at)
+     VALUES ($1, $2, $3, $4, now())
+     ON CONFLICT (service) DO UPDATE SET version = $2, config = $3, last_change_id = $4, updated_at = now()`,
+    [service, newVersion, config, changeId]
   );
 
   await pool.query(
@@ -83,14 +84,20 @@ app.post("/deploys", async (req: Request, res: Response) => {
 });
 
 app.get("/config/:service", async (req: Request, res: Response) => {
-  const { rows } = await pool.query("SELECT version, config FROM configs WHERE service = $1", [
-    req.params.service,
-  ]);
+  const { rows } = await pool.query(
+    "SELECT version, config, last_change_id FROM configs WHERE service = $1",
+    [req.params.service]
+  );
   if (rows.length === 0) {
     res.sendStatus(404);
     return;
   }
-  res.json({ service: req.params.service, version: rows[0].version, config: rows[0].config });
+  res.json({
+    service: req.params.service,
+    version: rows[0].version,
+    config: rows[0].config,
+    last_change_id: rows[0].last_change_id,
+  });
 });
 
 app.get("/deploys", async (req: Request, res: Response) => {

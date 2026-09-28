@@ -2,7 +2,7 @@ import "@incidentlab/runtime/src/telemetry";
 import express, { Request, Response, Application } from "express";
 import { Pool } from "pg";
 import { logger } from "@incidentlab/runtime/src/logger";
-import { getConfig } from "@incidentlab/runtime/src/resilience/config";
+import { getConfig, startConfigPolling, onConfigChange } from "@incidentlab/runtime/src/resilience/config";
 import { retry } from "@incidentlab/runtime/src/resilience/retry";
 import { withTimeout } from "@incidentlab/runtime/src/resilience/timeout";
 import { CircuitBreaker } from "@incidentlab/runtime/src/resilience/circuitBreaker";
@@ -12,23 +12,19 @@ const app: Application = express();
 const PORT = 3003;
 const PROVIDER_URL = "http://toxiproxy:8666/charge";
 
-// Pool size and breaker threshold/openMs are read once - both are baked into a
-// long-lived object's construction and can't change per-request the way retry and
-// timeout settings can. getConfig() itself still re-reads env vars fresh; only the
-// *call site* here is startup-scoped.
-const pool = new Pool({ max: getConfig().dbPoolMax });
-
-const breaker = new CircuitBreaker({
-  failureThreshold: getConfig().breakerThreshold,
-  openMs: getConfig().breakerOpenMs,
-  onStateChange: (from, to) => logger.info({ from, to }, "circuit breaker state changed"),
-});
-
-registerCircuitStateGauge(breaker);
-registerDbPoolGauges(pool);
-
 interface ProviderResponse {
   ref: string;
+}
+
+let pool: Pool;
+let breaker: CircuitBreaker;
+
+function buildBreaker(cfg: ReturnType<typeof getConfig>): CircuitBreaker {
+  return new CircuitBreaker({
+    failureThreshold: cfg.breakerThreshold,
+    openMs: cfg.breakerOpenMs,
+    onStateChange: (from, to) => logger.info({ from, to }, "circuit breaker state changed"),
+  });
 }
 
 app.use(express.json());
@@ -40,9 +36,9 @@ app.post("/charges", async (req: Request, res: Response) => {
     return;
   }
 
-  // Read fresh per request, unlike the pool/breaker above - this is what makes
-  // swapping getConfig()'s implementation for a live deploy-registry read (planned
-  // for Milestone 4) a one-line change instead of a rewrite of every call site.
+  // Read fresh per request - retry/timeout are "hot" keys, live within 5s of a
+  // deploy with no restart, because getConfig() itself is backed by a poller now
+  // (see runtime/src/resilience/config.ts) instead of reading env vars directly.
   const cfg = getConfig();
 
   const startedAt = Date.now();
@@ -97,4 +93,31 @@ app.post("/charges", async (req: Request, res: Response) => {
   }
 });
 
-app.listen(PORT, () => logger.info(`payment-service on ${PORT}`));
+async function main(): Promise<void> {
+  // Awaits one real poll before anything else, so a fresh container picks up the
+  // latest registry config immediately instead of starting from env defaults.
+  await startConfigPolling();
+
+  // Pool size is restart-required: constructed once from whatever was live at
+  // startup. Changing db.poolMax needs deployctl's --restart, not a hot rebuild.
+  pool = new Pool({ max: getConfig().dbPoolMax });
+  registerDbPoolGauges(pool);
+
+  // Breaker threshold/openMs are hot in the sense that we rebuild the breaker in
+  // place on a config change rather than requiring a restart - rebuilding does
+  // drop whatever open/half-open state it was in, which is an accepted trade-off.
+  breaker = buildBreaker(getConfig());
+  registerCircuitStateGauge(() => breaker);
+
+  onConfigChange((cfg) => {
+    breaker = buildBreaker(cfg);
+    logger.info(
+      { threshold: cfg.breakerThreshold, openMs: cfg.breakerOpenMs },
+      "circuit breaker rebuilt from live config"
+    );
+  });
+
+  app.listen(PORT, () => logger.info(`payment-service on ${PORT}`));
+}
+
+main();

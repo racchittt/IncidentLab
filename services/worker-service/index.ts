@@ -4,12 +4,14 @@ import { DynamoDBClient, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 import {
   SQSClient,
   CreateQueueCommand,
+  GetQueueAttributesCommand,
+  SetQueueAttributesCommand,
   ReceiveMessageCommand,
   DeleteMessageCommand,
   Message,
 } from "@aws-sdk/client-sqs";
 import { logger } from "@incidentlab/runtime/src/logger";
-import { retry } from "@incidentlab/runtime/src/retry";
+import { waitFor } from "@incidentlab/runtime/src/waitFor";
 
 const ddb = new DynamoDBClient({});
 const sqs = new SQSClient({ useQueueUrlAsEndpoint: false });
@@ -17,6 +19,7 @@ const tracer = trace.getTracer("worker-service");
 
 const ORDERS_TABLE = "orders";
 const ORDERS_PLACED_QUEUE = "orders-placed";
+const ORDERS_PLACED_DLQ = "orders-placed-dlq";
 const MAX_RECEIVE_COUNT = 3;
 
 async function fulfillOrder(orderId: string): Promise<void> {
@@ -61,14 +64,55 @@ async function processMessage(message: Message): Promise<void> {
   });
 }
 
+async function ensureDlqRedrivePolicy(sourceQueueUrl: string): Promise<void> {
+  const { QueueUrl: dlqUrl } = await waitFor(
+    () => sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_DLQ })),
+    { label: "CreateQueue(orders-placed-dlq)" }
+  );
+  if (!dlqUrl) {
+    throw new Error("Failed to retrieve QueueUrl for orders-placed-dlq queue.");
+  }
+
+  const { Attributes } = await waitFor(
+    () => sqs.send(new GetQueueAttributesCommand({ QueueUrl: dlqUrl, AttributeNames: ["QueueArn"] })),
+    { label: "GetQueueAttributes(orders-placed-dlq)" }
+  );
+  const dlqArn = Attributes?.QueueArn;
+  if (!dlqArn) {
+    throw new Error("Failed to retrieve QueueArn for orders-placed-dlq queue.");
+  }
+
+  await waitFor(
+    () =>
+      sqs.send(
+        new SetQueueAttributesCommand({
+          QueueUrl: sourceQueueUrl,
+          Attributes: {
+            RedrivePolicy: JSON.stringify({
+              deadLetterTargetArn: dlqArn,
+              maxReceiveCount: String(MAX_RECEIVE_COUNT),
+            }),
+          },
+        })
+      ),
+    { label: "SetQueueAttributes(orders-placed, RedrivePolicy)" }
+  );
+}
+
 async function main(): Promise<void> {
-  const QueueUrl = await retry(async () => {
+  const QueueUrl = await waitFor(async () => {
     const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
     if (!QueueUrl) {
       throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
     }
     return QueueUrl;
   }, { label: "CreateQueue(orders-placed)" });
+
+  // floci honors SQS's RedrivePolicy natively (confirmed in infra/floci/spike-dlq.ts,
+  // see evals/reports/p0-spikes.md) - after MAX_RECEIVE_COUNT failed receives, SQS
+  // itself moves the message to orders-placed-dlq. We just have to not delete a
+  // message we failed to process, and let redelivery run its course.
+  await ensureDlqRedrivePolicy(QueueUrl);
 
   logger.info("worker-service started");
 
@@ -90,16 +134,12 @@ async function main(): Promise<void> {
         const receiveCount = Number(message.Attributes?.ApproximateReceiveCount ?? "1");
         logger.error(
           { err: error, messageId: message.MessageId, receiveCount },
-          "failed to process message"
+          "failed to process message, leaving for redelivery"
         );
-
-        // A poison message (bad JSON, missing orderId, ...) would otherwise be
-        // redelivered and crash this loop forever. Give it a few tries in case the
-        // failure is transient, then give up and drop it instead of crash-looping.
-        if (receiveCount >= MAX_RECEIVE_COUNT) {
-          logger.error({ messageId: message.MessageId }, "giving up on poison message, deleting unprocessed");
-          await sqs.send(new DeleteMessageCommand({ QueueUrl, ReceiptHandle: message.ReceiptHandle }));
-        }
+        // Don't delete: a transient failure gets retried when the message becomes
+        // visible again, and a genuine poison message gets moved to
+        // orders-placed-dlq automatically once it hits MAX_RECEIVE_COUNT (SQS's own
+        // RedrivePolicy, set up in ensureDlqRedrivePolicy - no manual counting needed).
       }
     }
   }

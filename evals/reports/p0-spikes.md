@@ -14,6 +14,13 @@
 
 Script: `infra/floci/spike-fidelity.ts`. Run with `npx tsx spike-fidelity.ts` (floci must be up).
 
+**Q3: Does floci honor SQS's `RedrivePolicy` (dead-letter queues)?**
+- Answer: Yes.
+- Evidence: Created a source queue with `RedrivePolicy` pointing at a DLQ, `maxReceiveCount: 2`. Received the same message twice without deleting it (simulating a handler that always fails), waiting out the 1s `VisibilityTimeout` between each. The 3rd receive attempt got 0 messages from the source — the message had already moved to the DLQ, confirmed by a direct `ReceiveMessage` on it.
+- Because of this: `worker-service` doesn't need to hand-roll poison-message dead-lettering (counting `ApproximateReceiveCount` and manually `SendMessage`-ing to a DLQ itself). It sets a real `RedrivePolicy` on `orders-placed` once at startup and simply *doesn't delete* a message it failed to process — SQS (floci included) does the rest.
+
+Script: `infra/floci/spike-dlq.ts`. Run with `npx tsx spike-dlq.ts` (floci must be up).
+
 ## Spike B: Can a small local model be your cheap router?
 
 Same 20 hand-labeled `next_tool` scenarios (`evals/spikes/scenarios.json`) run through three backends: a local `qwen2.5:3b` via Ollama with a JSON schema forced through `format=`, and Jev/Laya via the existing controller layer (`agent/controller/`).

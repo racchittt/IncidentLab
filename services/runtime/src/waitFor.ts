@@ -1,7 +1,7 @@
 import { logger } from "./logger";
 
-interface RetryOptions {
-  retries?: number;
+interface WaitForOptions {
+  attempts?: number;
   delayMs?: number;
   label?: string;
 }
@@ -13,17 +13,17 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * ready yet (e.g. floci right after `depends_on` lets the container start) doesn't
  * take the whole service down.
  */
-export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const { retries = 10, delayMs = 1000, label = "operation" } = options;
+export async function waitFor<T>(fn: () => Promise<T>, options: WaitForOptions = {}): Promise<T> {
+  const { attempts = 10, delayMs = 1000, label = "operation" } = options;
 
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       return await fn();
     } catch (error) {
-      if (attempt === retries) {
+      if (attempt === attempts) {
         throw error;
       }
-      logger.warn({ attempt, retries, err: error }, `${label} failed, retrying`);
+      logger.warn({ attempt, attempts, err: error }, `${label} failed, retrying`);
       await sleep(delayMs * attempt);
     }
   }

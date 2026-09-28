@@ -9,7 +9,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { SQSClient, CreateQueueCommand, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { logger } from "@incidentlab/runtime/src/logger";
-import { retry } from "@incidentlab/runtime/src/retry";
+import { waitFor } from "@incidentlab/runtime/src/waitFor";
 import { latencyFaultMiddleware, setLatencyFault } from "./faults/latency";
 
 const app: Application = express();
@@ -23,7 +23,7 @@ const ORDERS_PLACED_QUEUE = "orders-placed";
 let ordersPlacedQueueUrl: string;
 
 async function ensureOrdersPlacedQueue(): Promise<void> {
-  await retry(async () => {
+  await waitFor(async () => {
     const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
     if (!QueueUrl) {
       throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
@@ -42,7 +42,7 @@ interface OrderResponse {
 }
 
 async function ensureOrdersTable(): Promise<void> {
-  await retry(async () => {
+  await waitFor(async () => {
     try {
       await ddb.send(
         new CreateTableCommand({

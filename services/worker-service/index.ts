@@ -9,6 +9,7 @@ import {
   Message,
 } from "@aws-sdk/client-sqs";
 import { logger } from "@incidentlab/runtime/src/logger";
+import { retry } from "@incidentlab/runtime/src/retry";
 
 const ddb = new DynamoDBClient({});
 const sqs = new SQSClient({ useQueueUrlAsEndpoint: false });
@@ -61,10 +62,13 @@ async function processMessage(message: Message): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
-  if (!QueueUrl) {
-    throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
-  }
+  const QueueUrl = await retry(async () => {
+    const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
+    if (!QueueUrl) {
+      throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
+    }
+    return QueueUrl;
+  }, { label: "CreateQueue(orders-placed)" });
 
   logger.info("worker-service started");
 

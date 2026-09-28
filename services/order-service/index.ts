@@ -9,6 +9,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { SQSClient, CreateQueueCommand, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { logger } from "@incidentlab/runtime/src/logger";
+import { retry } from "@incidentlab/runtime/src/retry";
 import { latencyFaultMiddleware, setLatencyFault } from "./faults/latency";
 
 const app: Application = express();
@@ -22,11 +23,13 @@ const ORDERS_PLACED_QUEUE = "orders-placed";
 let ordersPlacedQueueUrl: string;
 
 async function ensureOrdersPlacedQueue(): Promise<void> {
-  const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
-  if (!QueueUrl) {
-    throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
-  }
-  ordersPlacedQueueUrl = QueueUrl;
+  await retry(async () => {
+    const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
+    if (!QueueUrl) {
+      throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
+    }
+    ordersPlacedQueueUrl = QueueUrl;
+  }, { label: "CreateQueue(orders-placed)" });
 }
 
 interface OrderParams {
@@ -39,20 +42,22 @@ interface OrderResponse {
 }
 
 async function ensureOrdersTable(): Promise<void> {
-  try {
-    await ddb.send(
-      new CreateTableCommand({
-        TableName: ORDERS_TABLE,
-        KeySchema: [{ AttributeName: "orderId", KeyType: "HASH" }],
-        AttributeDefinitions: [{ AttributeName: "orderId", AttributeType: "S" }],
-        BillingMode: "PAY_PER_REQUEST",
-      })
-    );
-  } catch (error: unknown) {
-    if ((error as { name?: string })?.name !== "ResourceInUseException") {
-      throw error;
+  await retry(async () => {
+    try {
+      await ddb.send(
+        new CreateTableCommand({
+          TableName: ORDERS_TABLE,
+          KeySchema: [{ AttributeName: "orderId", KeyType: "HASH" }],
+          AttributeDefinitions: [{ AttributeName: "orderId", AttributeType: "S" }],
+          BillingMode: "PAY_PER_REQUEST",
+        })
+      );
+    } catch (error: unknown) {
+      if ((error as { name?: string })?.name !== "ResourceInUseException") {
+        throw error;
+      }
     }
-  }
+  }, { label: "CreateTable(orders)" });
 }
 
 app.use(express.json());

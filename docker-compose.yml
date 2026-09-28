@@ -12,7 +12,10 @@ services:
       context: .
       dockerfile: services/order-service/Dockerfile
     profiles: ["sim"]
-    depends_on: [floci]
+    restart: unless-stopped
+    depends_on:
+      floci:
+        condition: service_healthy
     environment:
       - OTEL_SERVICE_NAME=order-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
@@ -26,7 +29,10 @@ services:
       context: .
       dockerfile: services/worker-service/Dockerfile
     profiles: ["sim"]
-    depends_on: [floci]
+    restart: unless-stopped
+    depends_on:
+      floci:
+        condition: service_healthy
     environment:
       - OTEL_SERVICE_NAME=worker-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318

@@ -51,6 +51,51 @@ services:
     depends_on:
       - order-service
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=incidentlab
+      - POSTGRES_PASSWORD=incidentlab
+      - POSTGRES_DB=incidentlab
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U incidentlab"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    profiles: ["sim"]
+
+  mock-payment-provider:
+    build:
+      context: .
+      dockerfile: services/mock-payment-provider/Dockerfile
+    profiles: ["sim"]
+    restart: unless-stopped
+    environment:
+      - OTEL_SERVICE_NAME=mock-payment-provider
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - LATENCY_MS=0
+      - ERROR_RATE=0
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ./infra/toxiproxy/toxiproxy.json:/config/toxiproxy.json
+    profiles: ["sim"]
+    depends_on:
+      - mock-payment-provider
+
+  k6:
+    image: grafana/k6
+    command: ["run", "/scripts/orders.js"]
+    volumes:
+      - ./infra/loadgen/orders.js:/scripts/orders.js
+    profiles: ["sim"]
+    depends_on:
+      - nginx
+
   otel-lgtm:
     image: grafana/otel-lgtm
     profiles: ["obs"]

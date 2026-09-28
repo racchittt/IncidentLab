@@ -10,7 +10,6 @@ import {
 import { SQSClient, CreateQueueCommand, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { logger } from "@incidentlab/runtime/src/logger";
 import { waitFor } from "@incidentlab/runtime/src/waitFor";
-import { latencyFaultMiddleware, setLatencyFault } from "./faults/latency";
 
 const app: Application = express();
 const PORT: number = 3001;
@@ -61,7 +60,6 @@ async function ensureOrdersTable(): Promise<void> {
 }
 
 app.use(express.json());
-app.use(latencyFaultMiddleware);
 
 app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
   const orderId = randomUUID();
@@ -111,20 +109,6 @@ app.get(
     res.json({ orderId: id, status: Item.status?.S ?? "unknown" });
   }
 );
-
-app.post("/admin/inject-fault", (req: Request, res: Response) => {
-  const delayMs = req.body?.delayMs;
-  if (typeof delayMs !== "number" || delayMs < 0) {
-    return res.status(400).json({ error: "delayMs must be a non-negative number" });
-  }
-  setLatencyFault(delayMs);
-  res.sendStatus(200);
-});
-
-app.post("/admin/reset-fault", (req: Request, res: Response) => {
-  setLatencyFault(null);
-  res.sendStatus(200);
-});
 
 Promise.all([ensureOrdersTable(), ensureOrdersPlacedQueue()]).then(() => {
   app.listen(PORT, () => logger.info(`order-service on ${PORT}`));

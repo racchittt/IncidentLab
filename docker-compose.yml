@@ -73,6 +73,7 @@ services:
       dockerfile: services/mock-payment-provider/Dockerfile
     profiles: ["sim"]
     restart: unless-stopped
+    ports: ["3002:3002"]
     environment:
       - OTEL_SERVICE_NAME=mock-payment-provider
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318

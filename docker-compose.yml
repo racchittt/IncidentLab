@@ -97,6 +97,24 @@ services:
       - PGPASSWORD=incidentlab
       - PGDATABASE=incidentlab
 
+  deploy-registry:
+    build:
+      context: .
+      dockerfile: services/deploy-registry/Dockerfile
+    profiles: ["sim"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - OTEL_SERVICE_NAME=deploy-registry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=incidentlab
+      - PGPASSWORD=incidentlab
+      - PGDATABASE=registry
+
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy
     command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]

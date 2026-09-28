@@ -1,0 +1,12 @@
+{
+  "name": "payment-service",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "@incidentlab/runtime": "*",
+    "express": "^5.2.1",
+    "pg": "^8.13.1"
+  }
+}

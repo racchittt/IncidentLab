@@ -65,6 +65,8 @@ app.use(latencyFaultMiddleware);
 
 app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
   const orderId = randomUUID();
+  const amountCents =
+    typeof req.body?.amountCents === "number" ? req.body.amountCents : 500 + Math.floor(Math.random() * 4500);
 
   await ddb.send(
     new PutItemCommand({
@@ -73,6 +75,7 @@ app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
         orderId: { S: orderId },
         status: { S: "created" },
         item: { S: String(req.body?.item ?? "") },
+        amountCents: { N: String(amountCents) },
       },
     })
   );
@@ -80,7 +83,7 @@ app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
   await sqs.send(
     new SendMessageCommand({
       QueueUrl: ordersPlacedQueueUrl,
-      MessageBody: JSON.stringify({ eventType: "OrderPlaced", orderId }),
+      MessageBody: JSON.stringify({ eventType: "OrderPlaced", orderId, amountCents }),
     })
   );
 

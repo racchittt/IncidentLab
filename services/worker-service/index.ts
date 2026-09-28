@@ -22,6 +22,20 @@ const ORDERS_PLACED_QUEUE = "orders-placed";
 const ORDERS_PLACED_DLQ = "orders-placed-dlq";
 const MAX_RECEIVE_COUNT = 3;
 
+const PAYMENT_SERVICE_URL = "http://payment-service:3003/charges";
+
+async function chargeOrder(orderId: string, amountCents: number): Promise<void> {
+  const response = await fetch(PAYMENT_SERVICE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId, amountCents }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`payment-service responded ${response.status} for order ${orderId}`);
+  }
+}
+
 async function fulfillOrder(orderId: string): Promise<void> {
   try {
     await ddb.send(
@@ -56,8 +70,9 @@ async function processMessage(message: Message): Promise<void> {
 
   await tracer.startActiveSpan("process-order", {}, extractedContext, async (span) => {
     try {
-      const { orderId } = JSON.parse(message.Body ?? "{}");
-      await fulfillOrder(orderId); //flips to completed, will be extrapolated to other services in the future
+      const { orderId, amountCents } = JSON.parse(message.Body ?? "{}");
+      await chargeOrder(orderId, amountCents);
+      await fulfillOrder(orderId);
     } finally {
       span.end();
     }

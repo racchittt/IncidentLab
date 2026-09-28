@@ -1,0 +1,12 @@
+{
+  "incidentId": "INC-01",
+  "seed": 42,
+  "params": {
+    "provider_error_rate": 0.32022075038403275
+  },
+  "startedAt": "2026-09-28T19:27:05.479Z",
+  "endedAt": "2026-09-28T19:37:05.561Z",
+  "changeIds": [
+    "chg-0012"
+  ]
+}

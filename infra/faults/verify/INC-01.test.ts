@@ -66,8 +66,11 @@ describe("INC-01 verification", () => {
   });
 
   it("Loki contains a config applied log carrying this deploy's change_id", async () => {
+    // pino's fields (change_id, version, ...) land as Loki structured metadata, not
+    // as text in the log line - the line body is just "config applied". Filter on
+    // the metadata field directly rather than substring-matching the line.
     const params = new URLSearchParams({
-      query: `{service_name="payment-service"} |= "config applied" |= "${deployChangeId}"`,
+      query: `{service_name="payment-service"} | change_id="${deployChangeId}"`,
       start: `${(startedAtSec - 60) * 1_000_000_000}`,
       end: `${(startedAtSec + 620) * 1_000_000_000}`,
     });

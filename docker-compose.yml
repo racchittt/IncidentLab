@@ -124,22 +124,48 @@ services:
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy
     command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    ports: ["8474:8474"]
     volumes:
       - ./infra/toxiproxy/toxiproxy.json:/config/toxiproxy.json
     profiles: ["sim"]
     depends_on:
       - mock-payment-provider
 
-  k6:
-    image: grafana/k6
-    command: ["run", "/scripts/orders.js"]
-    volumes:
-      - ./infra/loadgen/orders.js:/scripts/orders.js
+  loadgen:
+    build:
+      context: .
+      dockerfile: services/loadgen/Dockerfile
     profiles: ["sim"]
+    restart: unless-stopped
+    ports: ["3005:3005"]
     depends_on:
       - nginx
+    environment:
+      - OTEL_SERVICE_NAME=loadgen
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - RPS=5
+
+  sqs-exporter:
+    build:
+      context: .
+      dockerfile: services/sqs-exporter/Dockerfile
+    profiles: ["sim"]
+    restart: unless-stopped
+    depends_on:
+      floci:
+        condition: service_healthy
+    environment:
+      - OTEL_SERVICE_NAME=sqs-exporter
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - AWS_ENDPOINT_URL=http://floci:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
 
   otel-lgtm:
     image: grafana/otel-lgtm
     profiles: ["obs"]
     ports: ["3000:3000", "4317:4317", "4318:4318", "9090:9090", "3100:3100", "3200:3200"]
+
+volumes:
+  nginx_logs:

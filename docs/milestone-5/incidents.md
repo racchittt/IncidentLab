@@ -1,6 +1,6 @@
 # Incident dataset card — Milestone 5
 
-Six incidents, each with a real timeline (`infra/faults/*.yaml`), a live 5-13 minute
+Seven incidents, each with a real timeline (`infra/faults/*.yaml`), a live 5-13 minute
 `ilab apply` run against the actual stack, and a vitest suite
 (`infra/faults/verify/*.test.ts`) that asserts against real Prometheus/Loki/
 deploy-registry data afterward — not a canned fixture. Every incident except INC-00
@@ -38,6 +38,15 @@ Run any of them with `npx tsx infra/faults/ilab.ts apply <ID> --seed <n>`, verif
 | **Evidence** | `ProvisionedThroughputExceededException` in order-service's logs: ~0 in baseline (60s) vs. ~1194 in the fault window (120s). Zero deploys for order-service throughout. |
 | **Control run** | `--no-deploy` (rate stays at 5): throttling stays at 0. |
 | **Gotcha** | None — passed clean on the first real run. The mechanism (an existing, already-wired rate limiter) made this the simplest incident to build. |
+
+## INC-03 — cache stampede
+
+| | |
+|---|---|
+| **Mechanism** | order-service does cache-aside product price lookups: Redis first, on a miss a deliberately expensive Postgres query (`pg_sleep(0.4)`, simulating a heavy join) then a `SET` with TTL. Loadgen sends 80% of traffic to 3 "hot" products out of 20. At t=240s, a causal deploy drops `cache.ttlSeconds` from 300 to 5 - once a hot key's entry (cached under the old long TTL) finally expires, it starts cycling through short-lived misses every ~5s instead of every 5 minutes. |
+| **Evidence** | A real 6-minute run: baseline hit ratio ~0.995 (240s) vs. ~0.92 in the back half of the fault window (entries cached under the old 300s TTL don't feel the new one until they naturally expire, so the first ~60s of the fault window still looks like baseline). `order_db_pool_in_use` average rises from 0 to ~0.15 over that same back half. |
+| **Control run** | `--no-deploy` keeps the TTL at 300 throughout: hit ratio stays ~0.98. |
+| **Gotcha** | Three real findings. (1) order-service had never touched Postgres before this incident, and its `docker-compose.yml` block had zero `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD`/`PGDATABASE`/`REDIS_URL` env vars - `pg.Pool` defaulted to `127.0.0.1:5432` and every lookup failed with `ECONNREFUSED` until those were added. (2) The original plan's 30rps baseline unintentionally tripped order-service's *own* pre-existing DynamoDB write-capacity limiter (20/s, INC-02's baseline) before requests ever reached the price lookup at all - had to drop to 15rps and compensate with a smaller pool (5→2) and a costlier simulated miss (0.2s→0.4s) to keep a measurable signal at the lower, DynamoDB-safe traffic level. (3) Real request queueing (`order_db_pool_waiting > 0`) was never achieved at any traffic level tried - concurrent misses per hot product (~1.5-2, computed from `rps × hot-share ÷ hot-product-count × miss-duration`) stayed under even a pool of 2's exact capacity, since three independently-expiring keys stagger their misses instead of synchronizing into one burst the way a naive "total rps × miss duration" estimate assumes. The verified evidence ended up being elevated miss rate and briefly-elevated pool utilization, not literal queueing - a real, honest signal, just a more modest one than first planned. Also needed a new helper (`promAvgOverTime`, using `avg_over_time` on raw samples) since the existing `promAvg`'s coarser query-range step was stepping right over this signal, averaging it away to exactly 0. |
 
 ## INC-05 — provider slowdown ("it wasn't us")
 

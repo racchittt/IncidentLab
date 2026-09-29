@@ -16,6 +16,10 @@ services:
     depends_on:
       floci:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - OTEL_SERVICE_NAME=order-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
@@ -23,6 +27,12 @@ services:
       - AWS_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=incidentlab
+      - PGPASSWORD=incidentlab
+      - PGDATABASE=incidentlab
+      - REDIS_URL=redis://redis:6379
 
   worker-service:
     build:
@@ -78,6 +88,15 @@ services:
     volumes:
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     profiles: ["sim"]
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["sim"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   mock-payment-provider:
     build:

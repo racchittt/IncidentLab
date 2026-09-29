@@ -29,6 +29,9 @@ const SEED_DEFAULTS: Record<string, Record<string, unknown>> = {
   // incident. The fault is load alone, not a config change.
   "order-service": {
     ddb: { writeCapacity: 20 },
+    // INC-03's whole point: this is the baseline, healthy value. The
+    // incident's one causal step drops it to 5.
+    cache: { ttlSeconds: 300 },
   },
   // deployctl special-cases this service: a deploy also renders
   // infra/nginx/ratelimit.conf and reloads nginx (see cmdDeploy).

@@ -20,6 +20,24 @@ export async function promAvg(query: string, startSec: number, endSec: number): 
   return values.reduce((a: number, b: number) => a + b, 0) / values.length;
 }
 
+/**
+ * Average value of a gauge over [startSec, endSec], via avg_over_time on the
+ * raw stored samples - unlike promAvg (which averages the *discretized*
+ * points a query_range call happens to return, at whatever step it used),
+ * this doesn't miss a real but brief value change that a coarse step could
+ * step right over. Matters for a gauge that's mostly 0 with short spikes
+ * (e.g. a DB pool's in-use count during a brief contention burst).
+ */
+export async function promAvgOverTime(query: string, startSec: number, endSec: number): Promise<number> {
+  const durationSec = Math.max(1, Math.floor(endSec - startSec));
+  const params = new URLSearchParams({ query: `avg_over_time(${query}[${durationSec}s])`, time: String(endSec) });
+  const res = await fetch(`${PROMETHEUS_URL}/api/v1/query?${params}`);
+  const body = await res.json();
+  const values = body.data.result.map((r: { value: [number, string] }) => Number(r.value[1]));
+  if (values.length === 0) return 0;
+  return values.reduce((a: number, b: number) => a + b, 0) / values.length;
+}
+
 /** Total increase of a counter over [startSec, endSec]. 0 if there's no data. */
 export async function promIncrease(query: string, startSec: number, endSec: number): Promise<number> {
   const durationSec = Math.max(1, Math.floor(endSec - startSec));

@@ -1,0 +1,23 @@
+id: INC-03
+timeline:
+  - at: 0s
+    # 15, not 30: order-service's own DynamoDB write cap (INC-02's baseline,
+    # 20/s) sits ahead of the price lookup in the request path - 30rps was
+    # unintentionally tripping THAT limiter before requests ever reached
+    # the cache, diluting this incident's own signal.
+    load.set: { rps: 15 } # baseline, mostly hitting 3 hot products - not the cause
+  - at: 240s
+    causal: true
+    deploy:
+      service: order-service
+      set: { cache.ttlSeconds: 5 }
+      reason: "reduce stale prices after catalog update"
+  - at: 360s
+    end: true
+phases:
+  baseline: ["0s", "240s"]
+  fault_onset: "240s"
+  fault_window: ["240s", "360s"]
+reset:
+  - rollback: all_created
+  - load.set: { rps: 5 }

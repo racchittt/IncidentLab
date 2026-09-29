@@ -12,6 +12,18 @@ const ORDERS_URL = process.env.ORDERS_URL ?? "http://nginx/orders";
 // fault file needs a live-adjustable rate, not a fixed k6 scenario.
 let rps = Number(process.env.RPS ?? "5");
 
+// INC-03's traffic shape: mostly a handful of hot products (matching
+// products 1-3 in infra/postgres/init.sql), so a cache expiry hits many
+// concurrent requests instead of being spread thin across the catalog.
+const HOT_PRODUCT_IDS = [1, 2, 3];
+const ALL_PRODUCT_IDS = Array.from({ length: 20 }, (_, i) => i + 1);
+const HOT_TRAFFIC_SHARE = 0.8;
+
+function pickProductId(): number {
+  const pool = Math.random() < HOT_TRAFFIC_SHARE ? HOT_PRODUCT_IDS : ALL_PRODUCT_IDS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 app.use(express.json());
 
 app.post("/admin/rate", (req: Request, res: Response) => {
@@ -34,7 +46,7 @@ async function loop(): Promise<void> {
       fetch(ORDERS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item: "loadgen" }),
+        body: JSON.stringify({ item: "loadgen", productId: pickProductId() }),
       }).catch((error: unknown) => logger.warn({ err: error }, "loadgen request failed"));
     }
 

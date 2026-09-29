@@ -1,18 +1,21 @@
 id: INC-01
-params:
-  provider_error_rate: [0.2, 0.4] # the seed picks a value in this range
 timeline:
   - at: 0s
-    provider.set: { errorRate: 0.03 } # normal background noise, NOT a deploy
+    provider.set: { errorRate: 0.3 } # baseline degradation, present from the start
+    load.set: { rps: 10 } # enough volume for retries to actually happen
   - at: 240s
+    causal: true
     deploy:
       service: payment-service
       set: { retry.baseMs: 0, retry.jitter: none }
       reason: "reduce checkout latency"
-  - at: 250s
-    provider.set: { errorRate: "{provider_error_rate}" }
   - at: 600s
     end: true
+phases:
+  baseline: ["0s", "240s"]
+  fault_onset: "240s"
+  fault_window: ["240s", "600s"]
 reset:
   - rollback: all_created
   - provider.set: { errorRate: 0 }
+    load.set: { rps: 5 }

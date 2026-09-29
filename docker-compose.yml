@@ -79,6 +79,10 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
       - LATENCY_MS=0
       - ERROR_RATE=0
+      # max rapid (same-idempotency-key, <15ms apart) retries tolerated before
+      # the provider starts adding latency/rejecting - see mock-payment-provider
+      # for why this is keyed on retry timing rather than raw concurrency.
+      - CAPACITY=3
 
   payment-service:
     build:

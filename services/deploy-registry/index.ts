@@ -25,6 +25,16 @@ const SEED_DEFAULTS: Record<string, Record<string, unknown>> = {
     breaker: { threshold: 5, openMs: 10000 },
     db: { poolMax: 10 },
   },
+  // INC-02's whole point: this stays a baseline, never deployed during the
+  // incident. The fault is load alone, not a config change.
+  "order-service": {
+    ddb: { writeCapacity: 20 },
+  },
+  // deployctl special-cases this service: a deploy also renders
+  // infra/nginx/ratelimit.conf and reloads nginx (see cmdDeploy).
+  "nginx-gateway": {
+    ratelimit: { rate: "30r/s", burst: 50 },
+  },
 };
 
 async function ensureSeeded(): Promise<void> {

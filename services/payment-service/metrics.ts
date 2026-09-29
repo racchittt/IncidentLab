@@ -13,6 +13,15 @@ export const providerDuration = meter.createHistogram("payment.provider.duration
   unit: "ms",
 });
 
+export const callsPerCharge = meter.createHistogram("payment.provider.calls_per_charge", {
+  description: "Provider calls one /charges request needed (1 = no retries) - the amplification signature",
+});
+
+export const retryDelay = meter.createHistogram("payment.retry.delay", {
+  description: "Actual wait between retry attempts (ms) - drops to ~0 when backoff is removed",
+  unit: "ms",
+});
+
 const STATE_TO_NUMBER = { closed: 0, "half-open": 1, open: 2 } as const;
 
 /**

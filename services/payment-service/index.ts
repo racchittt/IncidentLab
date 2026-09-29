@@ -6,7 +6,14 @@ import { getConfig, startConfigPolling, onConfigChange } from "@incidentlab/runt
 import { retry } from "@incidentlab/runtime/src/resilience/retry";
 import { withTimeout } from "@incidentlab/runtime/src/resilience/timeout";
 import { CircuitBreaker } from "@incidentlab/runtime/src/resilience/circuitBreaker";
-import { retryAttempts, providerDuration, registerCircuitStateGauge, registerDbPoolGauges } from "./metrics";
+import {
+  retryAttempts,
+  providerDuration,
+  callsPerCharge,
+  retryDelay,
+  registerCircuitStateGauge,
+  registerDbPoolGauges,
+} from "./metrics";
 
 const app: Application = express();
 const PORT = 3003;
@@ -42,6 +49,7 @@ app.post("/charges", async (req: Request, res: Response) => {
   const cfg = getConfig();
 
   const startedAt = Date.now();
+  let providerCalls = 1; // the first attempt, before any retry
 
   try {
     const { ref } = await breaker.execute(() =>
@@ -66,6 +74,8 @@ app.post("/charges", async (req: Request, res: Response) => {
           baseMs: cfg.retryBaseMs,
           jitter: cfg.retryJitter,
           onAttempt: ({ attempt, delayMs, error }) => {
+            providerCalls++;
+            retryDelay.record(delayMs);
             retryAttempts.add(1, { outcome: "retry" });
             logger.warn({ orderId, attempt, delayMs, err: error }, "retrying provider charge");
           },
@@ -75,6 +85,7 @@ app.post("/charges", async (req: Request, res: Response) => {
 
     retryAttempts.add(1, { outcome: "success" });
     providerDuration.record(Date.now() - startedAt);
+    callsPerCharge.record(providerCalls);
 
     await pool.query(
       `INSERT INTO payments (order_id, amount_cents, status, provider_ref)
@@ -88,6 +99,7 @@ app.post("/charges", async (req: Request, res: Response) => {
   } catch (error: unknown) {
     retryAttempts.add(1, { outcome: "giveup" });
     providerDuration.record(Date.now() - startedAt);
+    callsPerCharge.record(providerCalls);
     logger.error({ orderId, err: error }, "charge failed");
     res.sendStatus(503);
   }

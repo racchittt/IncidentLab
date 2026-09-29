@@ -33,6 +33,11 @@ const SEED_DEFAULTS: Record<string, Record<string, unknown>> = {
     // incident's one causal step drops it to 5.
     cache: { ttlSeconds: 300 },
   },
+  // INC-08's whole point: this stays "orders-placed" as a baseline. The
+  // causal step points it at a name nobody's ever enqueued to.
+  "worker-service": {
+    queue: { name: "orders-placed" },
+  },
   // deployctl special-cases this service: a deploy also renders
   // infra/nginx/ratelimit.conf and reloads nginx (see cmdDeploy).
   "nginx-gateway": {

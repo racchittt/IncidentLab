@@ -1,6 +1,6 @@
 # Incident dataset card — Milestone 5
 
-Seven incidents, each with a real timeline (`infra/faults/*.yaml`), a live 5-13 minute
+Eight incidents, each with a real timeline (`infra/faults/*.yaml`), a live 5-13 minute
 `ilab apply` run against the actual stack, and a vitest suite
 (`infra/faults/verify/*.test.ts`) that asserts against real Prometheus/Loki/
 deploy-registry data afterward — not a canned fixture. Every incident except INC-00
@@ -56,6 +56,15 @@ Run any of them with `npx tsx infra/faults/ilab.ts apply <ID> --seed <n>`, verif
 | **Evidence** | p95 end-to-end provider call duration: ~4.75ms baseline vs. ~2425ms in the fault window. Zero deploys for payment-service. |
 | **Control run** | `--no-deploy`: toxic never added, p95 stays flat. |
 | **Gotcha** | First attempt used 2500ms latency, which exceeds payment-service's own 2000ms request timeout. Every call timed out, tripped the circuit breaker (5 consecutive failures → open for 10s), and once open the breaker fails *instantly* without calling the provider at all — which erased the very latency signal the incident is supposed to produce (measured p95 stayed near baseline). Fixed by keeping the toxic under the timeout (1200ms), so calls succeed slowly instead of failing fast. |
+
+## INC-08 — silent fulfilment failure
+
+| | |
+|---|---|
+| **Mechanism** | worker-service polls `queue.name` from config every 5s, the same hot-reload pattern order-service uses for its own config. At t=120s, a causal deploy points it at `orders-placed-v2` - a name nobody's ever enqueued to. SQS's own idempotent `CreateQueueCommand` just hands back a fresh, permanently-empty queue: no restart, no error, no log line that looks like a failure - just silence. order-service never notices anything; it keeps enqueueing to the real `orders-placed` queue exactly as always. |
+| **Evidence** | A real run: `orders_created_total` +598 during the 120s fault window, `orders_fulfilled_total` +0 - exactly zero. `sqs_queue_depth` on `orders-placed` climbs from 0 to 510 over that same window. Zero error-level log lines for either service throughout. **Zero errors anywhere is the defining property of this incident**, not an assertion of convenience - if this incident ever produces a real error, something about it is wrong. |
+| **Control run** | `--no-deploy` keeps `queue.name` at `orders-placed` throughout: creation and fulfilment stay in lockstep (+598.9 created vs. +598.9 fulfilled over the same window). |
+| **Gotcha** | worker-service had no existing registry row when this was built (unlike order-service/payment-service, which already had rows from earlier incidents). The first deploy's diff would have shown `queue.name` going `from: null` instead of `from: "orders-placed"` - which would have broken reset's rollback-to-baseline behavior, since `pollWorkerServiceConfig`'s `typeof body.config?.queue?.name === "string"` check treats a `null` value as "no override, keep whatever's in memory" rather than "explicitly reset." Had to manually seed the baseline value via a real deploy first - the same pattern already needed for order-service/nginx-gateway/postgres earlier this session, whenever a brand-new config key gets added to an already-running service. |
 
 ## INC-10 — nginx rate-limit misconfiguration
 

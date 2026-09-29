@@ -1,0 +1,16 @@
+id: INC-08
+timeline:
+  - at: 120s
+    causal: true
+    deploy:
+      service: worker-service
+      set: { queue.name: orders-placed-v2 }
+      reason: "migrate consumer to v2 queue"
+  - at: 240s
+    end: true
+phases:
+  baseline: ["0s", "120s"]
+  fault_onset: "120s"
+  fault_window: ["120s", "240s"]
+reset:
+  - rollback: all_created

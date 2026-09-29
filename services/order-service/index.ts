@@ -12,7 +12,7 @@ import { Pool } from "pg";
 import { createClient, RedisClientType } from "redis";
 import { logger } from "@incidentlab/runtime/src/logger";
 import { waitFor } from "@incidentlab/runtime/src/waitFor";
-import { cacheRequests, registerDbPoolGauges } from "./metrics";
+import { cacheRequests, ordersCreated, registerDbPoolGauges } from "./metrics";
 
 const app: Application = express();
 const PORT: number = 3001;
@@ -212,6 +212,7 @@ app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
     })
   );
 
+  ordersCreated.add(1);
   logger.info({ orderId, requestId }, "order created");
   res.status(201).json({ orderId, status: "created" });
 });

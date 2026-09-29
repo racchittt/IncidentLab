@@ -355,6 +355,7 @@ const ALL_INCIDENTS: VerifyAllSpec[] = [
   { id: "INC-02", seed: 1, needsControl: true },
   { id: "INC-03", seed: 1, needsControl: true },
   { id: "INC-05", seed: 1, needsControl: true },
+  { id: "INC-08", seed: 1, needsControl: true },
   { id: "INC-10", seed: 1, needsControl: true },
   { id: "INC-12", seed: 1, needsControl: true },
 ];

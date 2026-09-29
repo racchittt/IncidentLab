@@ -1,0 +1,8 @@
+[
+  {
+    "name": "provider",
+    "listen": "0.0.0.0:8666",
+    "upstream": "mock-payment-provider:3002",
+    "enabled": true
+  }
+]

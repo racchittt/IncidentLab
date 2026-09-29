@@ -40,6 +40,7 @@ services:
       - AWS_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
+      - WORKER_CONCURRENCY=5
 
   nginx:
     image: nginx:alpine
@@ -51,7 +52,90 @@ services:
     depends_on:
       - order-service
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=incidentlab
+      - POSTGRES_PASSWORD=incidentlab
+      - POSTGRES_DB=incidentlab
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U incidentlab"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    profiles: ["sim"]
+
+  mock-payment-provider:
+    build:
+      context: .
+      dockerfile: services/mock-payment-provider/Dockerfile
+    profiles: ["sim"]
+    restart: unless-stopped
+    ports: ["3002:3002"]
+    environment:
+      - OTEL_SERVICE_NAME=mock-payment-provider
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - LATENCY_MS=0
+      - ERROR_RATE=0
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    profiles: ["sim"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - OTEL_SERVICE_NAME=payment-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=incidentlab
+      - PGPASSWORD=incidentlab
+      - PGDATABASE=incidentlab
+
+  deploy-registry:
+    build:
+      context: .
+      dockerfile: services/deploy-registry/Dockerfile
+    profiles: ["sim"]
+    restart: unless-stopped
+    ports: ["3004:3004"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - OTEL_SERVICE_NAME=deploy-registry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=incidentlab
+      - PGPASSWORD=incidentlab
+      - PGDATABASE=registry
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ./infra/toxiproxy/toxiproxy.json:/config/toxiproxy.json
+    profiles: ["sim"]
+    depends_on:
+      - mock-payment-provider
+
+  k6:
+    image: grafana/k6
+    command: ["run", "/scripts/orders.js"]
+    volumes:
+      - ./infra/loadgen/orders.js:/scripts/orders.js
+    profiles: ["sim"]
+    depends_on:
+      - nginx
+
   otel-lgtm:
     image: grafana/otel-lgtm
     profiles: ["obs"]
-    ports: ["3000:3000", "4317:4317", "4318:4318"]
+    ports: ["3000:3000", "4317:4317", "4318:4318", "9090:9090", "3100:3100", "3200:3200"]

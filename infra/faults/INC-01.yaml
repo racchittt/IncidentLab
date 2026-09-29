@@ -1,0 +1,18 @@
+id: INC-01
+params:
+  provider_error_rate: [0.2, 0.4] # the seed picks a value in this range
+timeline:
+  - at: 0s
+    provider.set: { errorRate: 0.03 } # normal background noise, NOT a deploy
+  - at: 240s
+    deploy:
+      service: payment-service
+      set: { retry.baseMs: 0, retry.jitter: none }
+      reason: "reduce checkout latency"
+  - at: 250s
+    provider.set: { errorRate: "{provider_error_rate}" }
+  - at: 600s
+    end: true
+reset:
+  - rollback: all_created
+  - provider.set: { errorRate: 0 }

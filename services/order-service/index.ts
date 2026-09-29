@@ -9,8 +9,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { SQSClient, CreateQueueCommand, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { logger } from "@incidentlab/runtime/src/logger";
-import { retry } from "@incidentlab/runtime/src/retry";
-import { latencyFaultMiddleware, setLatencyFault } from "./faults/latency";
+import { waitFor } from "@incidentlab/runtime/src/waitFor";
 
 const app: Application = express();
 const PORT: number = 3001;
@@ -23,7 +22,7 @@ const ORDERS_PLACED_QUEUE = "orders-placed";
 let ordersPlacedQueueUrl: string;
 
 async function ensureOrdersPlacedQueue(): Promise<void> {
-  await retry(async () => {
+  await waitFor(async () => {
     const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
     if (!QueueUrl) {
       throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
@@ -42,7 +41,7 @@ interface OrderResponse {
 }
 
 async function ensureOrdersTable(): Promise<void> {
-  await retry(async () => {
+  await waitFor(async () => {
     try {
       await ddb.send(
         new CreateTableCommand({
@@ -61,10 +60,11 @@ async function ensureOrdersTable(): Promise<void> {
 }
 
 app.use(express.json());
-app.use(latencyFaultMiddleware);
 
 app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
   const orderId = randomUUID();
+  const amountCents =
+    typeof req.body?.amountCents === "number" ? req.body.amountCents : 500 + Math.floor(Math.random() * 4500);
 
   await ddb.send(
     new PutItemCommand({
@@ -73,6 +73,7 @@ app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
         orderId: { S: orderId },
         status: { S: "created" },
         item: { S: String(req.body?.item ?? "") },
+        amountCents: { N: String(amountCents) },
       },
     })
   );
@@ -80,7 +81,7 @@ app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
   await sqs.send(
     new SendMessageCommand({
       QueueUrl: ordersPlacedQueueUrl,
-      MessageBody: JSON.stringify({ eventType: "OrderPlaced", orderId }),
+      MessageBody: JSON.stringify({ eventType: "OrderPlaced", orderId, amountCents }),
     })
   );
 
@@ -108,20 +109,6 @@ app.get(
     res.json({ orderId: id, status: Item.status?.S ?? "unknown" });
   }
 );
-
-app.post("/admin/inject-fault", (req: Request, res: Response) => {
-  const delayMs = req.body?.delayMs;
-  if (typeof delayMs !== "number" || delayMs < 0) {
-    return res.status(400).json({ error: "delayMs must be a non-negative number" });
-  }
-  setLatencyFault(delayMs);
-  res.sendStatus(200);
-});
-
-app.post("/admin/reset-fault", (req: Request, res: Response) => {
-  setLatencyFault(null);
-  res.sendStatus(200);
-});
 
 Promise.all([ensureOrdersTable(), ensureOrdersPlacedQueue()]).then(() => {
   app.listen(PORT, () => logger.info(`order-service on ${PORT}`));

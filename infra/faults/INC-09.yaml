@@ -1,0 +1,23 @@
+id: INC-09
+timeline:
+  - at: 0s
+    load.set: { rps: 10 } # baseline traffic the leak's timing is tuned against - not the cause
+  - at: 120s
+    causal: true
+    deploy:
+      service: payment-service
+      set: { ledger.auditWrites: true }
+      reason: "enable audit trail for compliance"
+  - at: 600s
+    end: true
+phases:
+  baseline: ["0s", "120s"]
+  fault_onset: "120s"
+  fault_window: ["120s", "600s"]
+reset:
+  - rollback: all_created
+  # Rolling back the flag does NOT return the leaked connections - the pool
+  # (a pg.Pool constructed once at startup) has no idea any of this
+  # happened. A restart is what actually clears it.
+  - restart: payment-service
+  - load.set: { rps: 5 }

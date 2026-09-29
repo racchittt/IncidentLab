@@ -66,6 +66,10 @@ interface Action {
   deploy?: DeployAction;
   end?: boolean;
   rollback?: string;
+  /** Some state doesn't go away when you roll back the config that caused it
+   * - a leaked pg connection stays leaked no matter what db.poolMax says.
+   * INC-09's whole lesson: reset for that has to be rollback *plus* this. */
+  restart?: string;
 }
 
 interface PhasesSpec {
@@ -201,6 +205,14 @@ async function toggleProxy(proxy: string, enabled: boolean): Promise<void> {
   if (!res.ok) throw new Error(`proxy.toggle failed: HTTP ${res.status}`);
 }
 
+/** Restarting drops whatever process-local state a service was holding onto
+ * (leaked pg connections, an in-memory pool) - config alone can't do that. */
+async function restartService(service: string): Promise<void> {
+  console.log(`[ilab] restart ${service}`);
+  const { execSync } = await import("node:child_process");
+  execSync(`docker compose restart ${service}`, { stdio: "inherit" });
+}
+
 async function postDeploy(action: DeployAction): Promise<string> {
   console.log(`[ilab] deploy ${action.service} ${JSON.stringify(action.set)} (${action.reason})`);
   const res = await fetchWithRetry(`${REGISTRY_URL}/deploys`, {
@@ -237,6 +249,9 @@ async function runSideEffects(step: Action, params: Record<string, number>): Pro
   }
   if (step["proxy.toggle"]) {
     await toggleProxy(step["proxy.toggle"].proxy, step["proxy.toggle"].enabled);
+  }
+  if (step.restart) {
+    await restartService(step.restart);
   }
 }
 
@@ -356,6 +371,7 @@ const ALL_INCIDENTS: VerifyAllSpec[] = [
   { id: "INC-03", seed: 1, needsControl: true },
   { id: "INC-05", seed: 1, needsControl: true },
   { id: "INC-08", seed: 1, needsControl: true },
+  { id: "INC-09", seed: 1, needsControl: true },
   { id: "INC-10", seed: 1, needsControl: true },
   { id: "INC-12", seed: 1, needsControl: true },
 ];

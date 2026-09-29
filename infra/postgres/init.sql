@@ -6,6 +6,14 @@ CREATE TABLE payments (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- INC-09's compliance audit trail. Only written when ledger.auditWrites is
+-- on - the incident's causal step.
+CREATE TABLE audit_log (
+  order_id TEXT PRIMARY KEY,
+  amount_cents INT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- order-service's product catalog. IDs 1-3 are the "hot" products loadgen
 -- points 80% of traffic at, for INC-03's cache stampede - nothing in the
 -- schema marks them hot, that's purely a loadgen traffic-shape decision.

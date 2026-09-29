@@ -23,7 +23,12 @@ const SEED_DEFAULTS: Record<string, Record<string, unknown>> = {
     retry: { maxAttempts: 5, baseMs: 100, jitter: "full" },
     timeout: { ms: 2000 },
     breaker: { threshold: 5, openMs: 10000 },
-    db: { poolMax: 10 },
+    // 20, not 10: INC-09's leak math (0.5% of orders at 10rps) is tuned to
+    // exhaust a pool this size in ~6-7 minutes, not instantly.
+    db: { poolMax: 20 },
+    // INC-09's whole point: this stays off as a baseline. The incident's
+    // causal step turns it on.
+    ledger: { auditWrites: false },
   },
   // INC-02's whole point: this stays a baseline, never deployed during the
   // incident. The fault is load alone, not a config change.

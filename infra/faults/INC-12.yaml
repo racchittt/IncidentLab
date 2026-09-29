@@ -1,0 +1,30 @@
+id: INC-12
+timeline:
+  # The decoy: looks like "someone shipped something" right before things
+  # broke, but log.level isn't read by payment-service at all - it's a
+  # complete no-op. Deliberately NOT marked causal, so it runs in both the
+  # real and control apply.
+  - at: 235s
+    deploy:
+      service: payment-service
+      set: { log.level: debug }
+      reason: "increase log verbosity for debugging"
+  - at: 240s
+    causal: true
+    proxy.toggle: { proxy: postgres, enabled: false }
+  # 40s, not 20s: payment-service's pg pool keeps serving queries off
+  # already-open idle connections for a while after the proxy goes down -
+  # errors don't actually start until the pool's own idle-connection churn
+  # forces a fresh connection attempt, roughly ~15s in. A short outage would
+  # end before that ever shows up.
+  - at: 280s
+    proxy.toggle: { proxy: postgres, enabled: true }
+  - at: 320s
+    end: true
+phases:
+  baseline: ["0s", "235s"]
+  fault_onset: "240s"
+  fault_window: ["240s", "320s"]
+reset:
+  - rollback: all_created
+  - proxy.toggle: { proxy: postgres, enabled: true }

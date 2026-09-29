@@ -105,11 +105,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      toxiproxy:
+        condition: service_started
     environment:
       - OTEL_SERVICE_NAME=payment-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
-      - PGHOST=postgres
-      - PGPORT=5432
+      # routed through toxiproxy so INC-12 can simulate a real DB outage
+      # (proxy.toggle) without touching payment-service's own config.
+      - PGHOST=toxiproxy
+      - PGPORT=5433
       - PGUSER=incidentlab
       - PGPASSWORD=incidentlab
       - PGDATABASE=incidentlab

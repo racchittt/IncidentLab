@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { promAvg, getDeploys } from "./lib";
+import { promAvg, getDeploys, tempoSearch } from "./lib";
 
 const RUNS_DIR = join(__dirname, "..", "..", "..", "runs");
 
@@ -30,6 +30,13 @@ const P95_QUERY = "histogram_quantile(0.95, sum(rate(payment_provider_duration_m
 async function p95(startSec: number, endSec: number): Promise<number> {
   return promAvg(P95_QUERY, startSec, endSec);
 }
+
+// The same outbound call the metric above summarizes, seen as a trace: a
+// CLIENT span on payment-service pointed at the toxiproxy "provider" proxy.
+// Metrics say "the latency moved"; this says "and here's an actual slow
+// call, not just a percentile artifact."
+const SLOW_PROVIDER_SPAN_QUERY =
+  '{resource.service.name="payment-service" && span.server.address="toxiproxy" && span.server.port=8666 && duration>=1s}';
 
 const real = latestManifest("INC-05", false);
 if (!real.phases?.baseline || !real.phases?.fault_window) {
@@ -63,5 +70,15 @@ describe("INC-05 verification", () => {
     const cAfterP95 = await p95(cFaultStart + 10, cFaultEnd);
 
     expect(cAfterP95).toBeLessThan(cBaselineP95 + 800);
+  });
+
+  it("fault-window traces show a real slow provider-call span; baseline traces never do", async () => {
+    const baselineSlowTraces = await tempoSearch(SLOW_PROVIDER_SPAN_QUERY, baselineStart, baselineEnd);
+    // Same 10s buffer as the p95 check - the toxic takes a moment to apply
+    // to new connections.
+    const faultSlowTraces = await tempoSearch(SLOW_PROVIDER_SPAN_QUERY, faultStart + 10, faultEnd);
+
+    expect(baselineSlowTraces).toBe(0);
+    expect(faultSlowTraces).toBeGreaterThan(0);
   });
 });

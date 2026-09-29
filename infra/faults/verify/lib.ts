@@ -3,6 +3,7 @@
 const PROMETHEUS_URL = process.env.PROMETHEUS_URL ?? "http://localhost:9090";
 const LOKI_URL = process.env.LOKI_URL ?? "http://localhost:3100";
 const REGISTRY_URL = process.env.DEPLOY_REGISTRY_URL ?? "http://localhost:3004";
+const TEMPO_URL = process.env.TEMPO_URL ?? "http://localhost:3200";
 
 export async function promQuery(query: string, startSec: number, endSec: number, step = "15"): Promise<any> {
   const params = new URLSearchParams({ query, start: String(startSec), end: String(endSec), step });
@@ -67,6 +68,20 @@ export async function lokiCount(query: string, startSec: number, endSec: number)
   const values = body.data.result.map((r: { value: [number, string] }) => Number(r.value[1]));
   if (values.length === 0) return 0;
   return values.reduce((a: number, b: number) => a + b, 0);
+}
+
+/**
+ * Number of distinct traces matching a TraceQL query within [startSec, endSec].
+ * Existence, not volume, is what most trace assertions care about ("did a
+ * slow provider-call span happen at all in this window"), so this counts
+ * traces (Tempo's /api/search already dedupes to one entry per trace) rather
+ * than spans.
+ */
+export async function tempoSearch(traceQlQuery: string, startSec: number, endSec: number, limit = 50): Promise<number> {
+  const params = new URLSearchParams({ q: traceQlQuery, start: String(startSec), end: String(endSec), limit: String(limit) });
+  const res = await fetch(`${TEMPO_URL}/api/search?${params}`);
+  const body = await res.json();
+  return (body.traces ?? []).length;
 }
 
 /** Deploys for a service within [startSec, endSec]. */

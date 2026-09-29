@@ -376,6 +376,76 @@ const ALL_INCIDENTS: VerifyAllSpec[] = [
   { id: "INC-12", seed: 1, needsControl: true },
 ];
 
+// Mirrors deploy-registry's own SEED_DEFAULTS (services/deploy-registry/index.ts).
+// Duplicated rather than imported - ilab talks to the registry only over its
+// HTTP API, never its source - but that's exactly the point: this check
+// exists to catch the two ever drifting apart, the same way a config key
+// someone forgot to seed has repeatedly bitten this session (order-service's
+// cache TTL, worker-service's queue name, payment-service's ledger flag).
+const EXPECTED_BASELINE_CONFIG: Record<string, Record<string, unknown>> = {
+  "payment-service": {
+    retry: { maxAttempts: 5, baseMs: 100, jitter: "full" },
+    timeout: { ms: 2000 },
+    breaker: { threshold: 5, openMs: 10000 },
+    db: { poolMax: 20 },
+    ledger: { auditWrites: false },
+  },
+  "order-service": {
+    ddb: { writeCapacity: 20 },
+    cache: { ttlSeconds: 300 },
+  },
+  "worker-service": {
+    queue: { name: "orders-placed" },
+  },
+  "nginx-gateway": {
+    ratelimit: { rate: "30r/s", burst: 50 },
+  },
+};
+
+function flattenConfig(obj: Record<string, unknown>, prefix = ""): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      Object.assign(out, flattenConfig(value as Record<string, unknown>, path));
+    } else {
+      out[path] = value;
+    }
+  }
+  return out;
+}
+
+/** After a reset, every seeded service's live config should exactly match
+ * its known baseline. Any drift means either a fault's own reset step
+ * forgot to roll a key back, or the baseline itself silently changed - both
+ * are the kind of thing verify-all is supposed to catch before an unattended
+ * overnight run quietly certifies a broken baseline as healthy. */
+async function baselineConfigMatchesSeed(): Promise<{ ok: boolean; drift: string[] }> {
+  const drift: string[] = [];
+  for (const [service, expected] of Object.entries(EXPECTED_BASELINE_CONFIG)) {
+    let body: { config?: Record<string, unknown> };
+    try {
+      const res = await fetchWithRetry(`${REGISTRY_URL}/config/${service}`);
+      if (!res.ok) {
+        drift.push(`${service}: config fetch failed (HTTP ${res.status})`);
+        continue;
+      }
+      body = await res.json();
+    } catch (error) {
+      drift.push(`${service}: config fetch failed (${error instanceof Error ? error.message : error})`);
+      continue;
+    }
+    const actual = flattenConfig(body.config ?? {});
+    const expectedFlat = flattenConfig(expected);
+    for (const [key, value] of Object.entries(expectedFlat)) {
+      if (actual[key] !== value) {
+        drift.push(`${service}.${key}: expected ${JSON.stringify(value)}, got ${JSON.stringify(actual[key] ?? null)}`);
+      }
+    }
+  }
+  return { ok: drift.length === 0, drift };
+}
+
 /** Rough post-reset health signal: are 5xxs still elevated anywhere? A
  * non-zero reading here doesn't fail the run on its own (a few in-flight
  * requests can straggle in right after a reset) - it's a warning for the
@@ -410,7 +480,7 @@ async function runVerifyTest(incidentId: string): Promise<boolean> {
 
 async function cmdVerifyAll(only?: string[]): Promise<void> {
   const incidents = only ? ALL_INCIDENTS.filter((spec) => only.includes(spec.id)) : ALL_INCIDENTS;
-  const results: { id: string; pass: boolean; baselineRestored: boolean; error?: string }[] = [];
+  const results: { id: string; pass: boolean; baselineRestored: boolean; configDrift: string[] }[] = [];
 
   for (const spec of incidents) {
     console.log(`\n[ilab] ==================== ${spec.id} ====================`);
@@ -427,6 +497,7 @@ async function cmdVerifyAll(only?: string[]): Promise<void> {
     }
 
     let baselineRestored = true;
+    let configDrift: string[] = [];
     try {
       await cmdReset(spec.id);
       // A high-volume incident (a retry storm, sustained throttling) can
@@ -435,18 +506,26 @@ async function cmdVerifyAll(only?: string[]): Promise<void> {
       // completes - give those time to drain before judging.
       await new Promise((resolve) => setTimeout(resolve, 10000));
       baselineRestored = await baselineLooksHealthy();
+      const configCheck = await baselineConfigMatchesSeed();
+      configDrift = configCheck.drift;
+      if (!configCheck.ok) {
+        baselineRestored = false;
+        console.error(`[ilab] ${spec.id} left config drift after reset:`);
+        for (const line of configDrift) console.error(`  - ${line}`);
+      }
     } catch (error) {
       console.error(`[ilab] ${spec.id} reset failed: ${error instanceof Error ? error.message : error}`);
       baselineRestored = false;
     }
 
-    results.push({ id: spec.id, pass, baselineRestored });
+    results.push({ id: spec.id, pass, baselineRestored, configDrift });
   }
 
   console.log("\n[ilab] verify-all results:");
-  console.log("ID       VERIFY    BASELINE RESTORED");
+  console.log("ID       VERIFY    BASELINE RESTORED  CONFIG DRIFT");
   for (const r of results) {
-    console.log(`${r.id.padEnd(9)}${(r.pass ? "PASS" : "FAIL").padEnd(10)}${r.baselineRestored ? "yes" : "no"}`);
+    const driftSummary = r.configDrift.length > 0 ? `${r.configDrift.length} key(s)` : "none";
+    console.log(`${r.id.padEnd(9)}${(r.pass ? "PASS" : "FAIL").padEnd(10)}${(r.baselineRestored ? "yes" : "no").padEnd(19)}${driftSummary}`);
   }
 
   if (results.some((r) => !r.pass || !r.baselineRestored)) {

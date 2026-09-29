@@ -18,8 +18,40 @@ const ddb = new DynamoDBClient({});
 const sqs = new SQSClient({ useQueueUrlAsEndpoint: false });
 const ORDERS_TABLE = "orders";
 const ORDERS_PLACED_QUEUE = "orders-placed";
+const DEPLOY_REGISTRY_URL = process.env.DEPLOY_REGISTRY_URL ?? "http://deploy-registry:3004";
 
 let ordersPlacedQueueUrl: string;
+
+// ddb.writeCapacity is a baseline config value - seeded once in deploy-registry
+// and never deployed during INC-02, on purpose. The incident's only trigger is
+// load; nothing about this service's own config changes.
+let ddbWriteCapacity = 20;
+let tokens = ddbWriteCapacity;
+let lastRefill = Date.now();
+
+async function pollOrderServiceConfig(): Promise<void> {
+  try {
+    const res = await fetch(`${DEPLOY_REGISTRY_URL}/config/order-service`);
+    if (res.ok) {
+      const body = await res.json();
+      if (typeof body.config?.ddb?.writeCapacity === "number") {
+        ddbWriteCapacity = body.config.ddb.writeCapacity;
+      }
+    }
+  } catch {
+    // Registry unreachable: keep the last known capacity rather than throw.
+  }
+}
+
+/** Token bucket gating DynamoDB writes at ddbWriteCapacity per second. */
+function tryConsumeWriteToken(): boolean {
+  const now = Date.now();
+  tokens = Math.min(ddbWriteCapacity, tokens + ((now - lastRefill) / 1000) * ddbWriteCapacity);
+  lastRefill = now;
+  if (tokens < 1) return false;
+  tokens -= 1;
+  return true;
+}
 
 async function ensureOrdersPlacedQueue(): Promise<void> {
   await waitFor(async () => {
@@ -62,6 +94,16 @@ async function ensureOrdersTable(): Promise<void> {
 app.use(express.json());
 
 app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
+  const requestId = req.header("X-Request-Id");
+
+  if (!tryConsumeWriteToken()) {
+    const error = new Error("write capacity exceeded");
+    error.name = "ProvisionedThroughputExceededException";
+    logger.warn({ requestId, ddbWriteCapacity }, error.name);
+    res.sendStatus(503);
+    return;
+  }
+
   const orderId = randomUUID();
   const amountCents =
     typeof req.body?.amountCents === "number" ? req.body.amountCents : 500 + Math.floor(Math.random() * 4500);
@@ -85,7 +127,7 @@ app.post("/orders", async (req: Request, res: Response<OrderResponse>) => {
     })
   );
 
-  logger.info({ orderId }, "order created");
+  logger.info({ orderId, requestId }, "order created");
   res.status(201).json({ orderId, status: "created" });
 });
 
@@ -110,6 +152,7 @@ app.get(
   }
 );
 
-Promise.all([ensureOrdersTable(), ensureOrdersPlacedQueue()]).then(() => {
-  app.listen(PORT, () => logger.info(`order-service on ${PORT}`));
+Promise.all([ensureOrdersTable(), ensureOrdersPlacedQueue(), pollOrderServiceConfig()]).then(() => {
+  setInterval(pollOrderServiceConfig, 5000);
+  app.listen(PORT, () => logger.info({ ddbWriteCapacity }, `order-service on ${PORT}`));
 });

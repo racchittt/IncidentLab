@@ -31,16 +31,24 @@ export async function promIncrease(query: string, startSec: number, endSec: numb
   return values.reduce((a: number, b: number) => a + b, 0);
 }
 
-/** Number of matching Loki log lines over [startSec, endSec]. */
+/**
+ * Number of matching Loki log lines over [startSec, endSec]. Uses
+ * count_over_time (a metric query, aggregated server-side) rather than
+ * fetching raw log lines and counting them client-side - the raw-line query
+ * endpoint caps results at Loki's default limit (100), which silently
+ * undercounts anything busier than that.
+ */
 export async function lokiCount(query: string, startSec: number, endSec: number): Promise<number> {
+  const durationSec = Math.max(1, Math.floor(endSec - startSec));
   const params = new URLSearchParams({
-    query,
-    start: `${startSec * 1_000_000_000}`,
-    end: `${endSec * 1_000_000_000}`,
+    query: `sum(count_over_time(${query}[${durationSec}s]))`,
+    time: String(endSec),
   });
-  const res = await fetch(`${LOKI_URL}/loki/api/v1/query_range?${params}`);
+  const res = await fetch(`${LOKI_URL}/loki/api/v1/query?${params}`);
   const body = await res.json();
-  return body.data.result.flatMap((r: { values: unknown[] }) => r.values).length;
+  const values = body.data.result.map((r: { value: [number, string] }) => Number(r.value[1]));
+  if (values.length === 0) return 0;
+  return values.reduce((a: number, b: number) => a + b, 0);
 }
 
 /** Deploys for a service within [startSec, endSec]. */

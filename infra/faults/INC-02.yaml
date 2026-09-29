@@ -1,0 +1,13 @@
+id: INC-02
+timeline:
+  - at: 60s
+    causal: true
+    load.set: { rps: 40 }
+  - at: 180s
+    end: true
+phases:
+  baseline: ["0s", "60s"]
+  fault_onset: "60s"
+  fault_window: ["60s", "180s"]
+reset:
+  - load.set: { rps: 5 }

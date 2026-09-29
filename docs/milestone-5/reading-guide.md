@@ -254,3 +254,25 @@ narrowing the window rather than widening the wait.
 - **`ilab verify-all` is a real-time, blocking process for the whole set** — same
   caveat Milestone 4 noted for `ilab apply` alone, just six times over. A full run is
   close to an hour.
+
+## Addendum: realism review, round 1
+
+A review of this batch flagged INC-01's overload model (same-idempotency-key retries
+within 15ms) as something no real provider actually does, and INC-12's proxy-toggle-only
+outage as having too much onset drift (2-15s+) for "errors line up with the outage" to
+be a crisp piece of evidence. Both got fixed on the same branch, after this guide was
+first written:
+
+- **INC-01** is now a token-bucket rate limiter with a burst allowance *separate* from
+  its steady refill rate (`RATE_LIMIT_PER_SEC=15`, `BUCKET_CAPACITY=8`) - a real payment
+  API pattern. Getting there took its own round of tuning almost as long as the original
+  build: a single-parameter bucket (burst == refill rate) was either too loose to ever
+  trigger or tight enough to break the baseline control, with no usable middle ground,
+  until burst capacity was pulled apart from the steady rate.
+- **INC-12** now pairs `proxy.toggle` with a `reset_peer` toxic, killing already-open
+  connections immediately instead of waiting for the pool's idle-connection churn to
+  notice. Onset dropped from 2-15s+ to a consistent ~5s.
+
+`docs/milestone-5/incidents.md` has the full detail (real numbers, the tuning journey,
+a newly-found Prometheus query quirk from tightening INC-12's verify-test windows) - this
+addendum is just a pointer so this guide doesn't silently go stale.

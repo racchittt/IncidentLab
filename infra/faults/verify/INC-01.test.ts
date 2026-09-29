@@ -37,9 +37,9 @@ const toSec = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 // 1/(1-errorRate) whether or not backoff is in place, since retries add the
 // same total number of calls either way - it's the TIMING of those calls
 // that backoff controls, not the count. Kept as a weak sanity check; the
-// real signature is orders exhausting all retry attempts (see below), which
-// only happens once the provider's rapid-retry detector (keyed on
-// Idempotency-Key timing, see mock-payment-provider) starts rejecting.
+// real signature is the provider's own 429 rate and orders exhausting all
+// retry attempts (see below), which only move once removing backoff lets
+// retries burst past the provider's rate limit (see mock-payment-provider).
 const AMPLIFICATION_QUERY =
   "increase(payment_provider_calls_per_charge_sum[30s]) / increase(payment_provider_calls_per_charge_count[30s])";
 
@@ -48,6 +48,8 @@ async function amplification(startSec: number, endSec: number): Promise<number> 
 }
 
 const GIVEUP_QUERY = 'payment_retry_attempts_total{outcome="giveup"}';
+const RATE_LIMITED_QUERY =
+  'http_server_request_duration_seconds_count{service_name="mock-payment-provider",http_response_status_code="429"}';
 
 const real = latestManifest("INC-01", false);
 const deployChangeId = real.changeIds[0];
@@ -67,11 +69,24 @@ describe("INC-01 verification", () => {
     expect(deploy.diff).toHaveProperty("retry.baseMs");
   });
 
+  it("the provider's rate limiter starts rejecting once the deploy removes backoff", async () => {
+    // Backoff doesn't eliminate the occasional 429 - a burst still happens
+    // by chance sometimes - it just spaces retries out enough that a 429
+    // essentially never cascades into a giveup (see the next test, where
+    // that distinction is stark: 0 giveups vs thousands). So this baseline
+    // isn't tiny, just clearly smaller than the fault window.
+    const baseline429s = await promIncrease(RATE_LIMITED_QUERY, baselineStart, baselineEnd);
+    // 20s buffer after the deploy for the config poll to take effect.
+    const after429s = await promIncrease(RATE_LIMITED_QUERY, faultStart + 20, faultEnd);
+
+    expect(after429s).toBeGreaterThan(Math.max(baseline429s, 1) * 3);
+  });
+
   it("orders start exhausting all retry attempts once the deploy removes backoff", async () => {
-    // Backoff+jitter occasionally lands a retry inside the rapid-retry window
-    // by pure chance, so baseline giveups aren't exactly zero - just rare.
+    // Backoff+jitter occasionally lands a burst past the rate limit by pure
+    // chance, so baseline giveups aren't exactly zero - just rare.
     const baselineGiveups = await promIncrease(GIVEUP_QUERY, baselineStart, baselineEnd);
-    // 20s buffer after the deploy for the config poll + rapid-retry detector to bite.
+    // 20s buffer after the deploy for the config poll to take effect.
     const afterGiveups = await promIncrease(GIVEUP_QUERY, faultStart + 20, faultEnd);
 
     expect(afterGiveups).toBeGreaterThan(Math.max(baselineGiveups, 1) * 10);
@@ -103,9 +118,9 @@ describe("INC-01 verification", () => {
     const [cFaultStart, cFaultEnd] = control.phases.fault_window.map(toSec);
 
     // Same errorRate the whole time, no deploy ever happened - retry+backoff
-    // keeps handling it. Backoff+jitter occasionally lands a retry inside the
-    // rapid-retry window by chance, so this stays low rather than exactly
-    // zero - the real run's fault window is orders of magnitude higher.
+    // keeps calls under the provider's rate limit. Occasional bursts happen
+    // by chance, so this stays low rather than exactly zero - the real run's
+    // fault window is orders of magnitude higher.
     const cGiveups = await promIncrease(GIVEUP_QUERY, cFaultStart + 20, cFaultEnd);
     expect(cGiveups).toBeLessThan(50);
 

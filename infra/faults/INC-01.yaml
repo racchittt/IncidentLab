@@ -1,7 +1,7 @@
 id: INC-01
 timeline:
   - at: 0s
-    provider.set: { errorRate: 0.3 } # baseline degradation, present from the start
+    provider.set: { errorRate: 0.15 } # baseline degradation, present from the start
     load.set: { rps: 10 } # enough volume for retries to actually happen
   - at: 240s
     causal: true

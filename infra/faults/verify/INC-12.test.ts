@@ -51,18 +51,22 @@ describe("INC-12 verification", () => {
     // Between the decoy deploy (t=235s) and the outage (t=240s) - the decoy
     // alone should do nothing.
     const preOutageErrors = await promIncrease(ERROR_QUERY, faultOnset - 5, faultOnset);
-    // payment-service's pg pool keeps serving queries off already-open idle
-    // connections for a while after the proxy goes down - errors don't
-    // start immediately, they start once the pool's own idle-connection
-    // churn forces a fresh connection attempt (empirically ~15s in). Check
-    // the back half of the 40s outage window, well clear of that lag.
-    const outageErrors = await promIncrease(ERROR_QUERY, faultOnset + 20, faultOnset + 40);
+    // A reset_peer toxic (alongside the proxy.toggle) kills already-open
+    // connections immediately instead of waiting for the pool's own idle
+    // churn to notice - confirmed via payment-service logs showing a
+    // "Connection terminated unexpectedly" error ~5s after onset, vs. the
+    // 2-15+ second drift measured with proxy.toggle alone. The 15s buffer
+    // here isn't waiting out that drift anymore - it's just working around
+    // an unrelated Prometheus query artifact where increase() returns no
+    // result for a window straddling certain counter updates too closely;
+    // a window starting 15s out reads cleanly.
+    const outageErrors = await promIncrease(ERROR_QUERY, faultOnset + 15, faultOnset + 35);
 
     expect(outageErrors).toBeGreaterThan(preOutageErrors + 2);
   });
 
   it("errors recover once the proxy comes back", async () => {
-    const outageErrors = await promIncrease(ERROR_QUERY, faultOnset + 20, faultOnset + 40);
+    const outageErrors = await promIncrease(ERROR_QUERY, faultOnset + 15, faultOnset + 35);
     // Buffer for in-flight reconnects to settle after the proxy is back at t=280s (onset+40).
     const recoveredErrors = await promIncrease(ERROR_QUERY, faultOnset + 55, faultEnd);
 

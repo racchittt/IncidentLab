@@ -11,14 +11,16 @@ timeline:
       reason: "increase log verbosity for debugging"
   - at: 240s
     causal: true
+    # proxy.toggle alone only stops NEW connections - existing pooled ones
+    # keep working until the pool's own idle-connection churn notices,
+    # which drifted 2-15+ seconds across real runs (see the gotcha in
+    # docs/milestone-5/incidents.md). reset_peer kills already-open
+    # connections immediately, making the onset deterministic.
     proxy.toggle: { proxy: postgres, enabled: false }
-  # 40s, not 20s: payment-service's pg pool keeps serving queries off
-  # already-open idle connections for a while after the proxy goes down -
-  # errors don't actually start until the pool's own idle-connection churn
-  # forces a fresh connection attempt, roughly ~15s in. A short outage would
-  # end before that ever shows up.
+    toxic.add: { proxy: postgres, type: reset_peer, attributes: { timeout: 0 } }
   - at: 280s
     proxy.toggle: { proxy: postgres, enabled: true }
+    toxic.remove: { proxy: postgres, name: reset_peer_ilab }
   - at: 320s
     end: true
 phases:
@@ -28,3 +30,4 @@ phases:
 reset:
   - rollback: all_created
   - proxy.toggle: { proxy: postgres, enabled: true }
+    toxic.remove: { proxy: postgres, name: reset_peer_ilab }

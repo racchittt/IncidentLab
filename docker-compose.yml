@@ -91,10 +91,13 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
       - LATENCY_MS=0
       - ERROR_RATE=0
-      # max rapid (same-idempotency-key, <15ms apart) retries tolerated before
-      # the provider starts adding latency/rejecting - see mock-payment-provider
-      # for why this is keyed on retry timing rather than raw concurrency.
-      - CAPACITY=3
+      # per-client rate limit (calls/sec) - real payment APIs have one. This
+      # is INC-01's feedback loop: removing backoff bunches retries close
+      # together in time, so the same total number of calls arrives in
+      # tighter bursts, depleting this budget and minting extra 429s that
+      # themselves need retrying.
+      - RATE_LIMIT_PER_SEC=15
+      - BUCKET_CAPACITY=8
 
   payment-service:
     build:

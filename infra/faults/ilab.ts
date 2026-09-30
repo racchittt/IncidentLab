@@ -5,6 +5,7 @@
  *   ilab apply <INC-ID> --seed <n> [--no-deploy|--control]
  *   ilab reset <INC-ID>
  *   ilab verify-all
+ *   ilab record-all --variants <n> [INC-00,INC-05]
  */
 import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -136,6 +137,87 @@ function resolvePlaceholder(value: unknown, params: Record<string, number>): unk
     if (match) return params[match[1]];
   }
   return value;
+}
+
+// Only payment-service's own config-polling code ever reads log.level -
+// every other target here just stores it, unread, in the registry. The
+// exact mechanism INC-00 and INC-12 already use for a harmless decoy,
+// generalized to any service so record-all's decoys aren't always the
+// same target.
+const DECOY_SERVICES = [
+  "nginx-gateway",
+  "order-service",
+  "worker-service",
+  "payment-service",
+  "mock-payment-provider",
+  "deploy-registry",
+  "loadgen",
+  "sqs-exporter",
+];
+const DECOY_REASONS = [
+  "increase log verbosity for debugging",
+  "routine logging config review",
+  "align logging level across services",
+];
+
+/**
+ * Builds a seed-driven variant of a fault file for dataset recording: the
+ * causal step's onset jitters +-30s (any phases boundary that exactly
+ * matched the original onset shifts with it), every load.set's rps
+ * jitters +-20%, and a harmless decoy deploy gets a 50% chance of landing
+ * somewhere in the baseline window, on a random service. Without decoys,
+ * "blame the most recent deploy" is right often enough that it stops
+ * measuring anything about an agent's actual investigation skill.
+ */
+function buildVariantFaultFile(faultFile: FaultFile, variantSeed: number): FaultFile {
+  const rng = mulberry32(variantSeed);
+  const variant: FaultFile = JSON.parse(JSON.stringify(faultFile));
+
+  const causalStep = variant.timeline.find((s) => s.causal);
+  const endStep = variant.timeline.find((s) => s.end);
+  const endSeconds = endStep ? parseAtSeconds(endStep.at) : Infinity;
+
+  if (causalStep) {
+    const originalSeconds = parseAtSeconds(causalStep.at);
+    const onsetJitter = Math.round(rng() * 60 - 30); // seconds, [-30, 30]
+    const jitteredSeconds = Math.max(5, Math.min(originalSeconds + onsetJitter, endSeconds - 10));
+    causalStep.at = `${jitteredSeconds}s`;
+
+    if (variant.phases) {
+      const shift = (at: string) => (parseAtSeconds(at) === originalSeconds ? `${jitteredSeconds}s` : at);
+      if (variant.phases.baseline) {
+        variant.phases.baseline = [variant.phases.baseline[0], shift(variant.phases.baseline[1])];
+      }
+      if (variant.phases.fault_onset) {
+        variant.phases.fault_onset = shift(variant.phases.fault_onset);
+      }
+      if (variant.phases.fault_window) {
+        variant.phases.fault_window = [shift(variant.phases.fault_window[0]), variant.phases.fault_window[1]];
+      }
+    }
+  }
+
+  for (const step of variant.timeline) {
+    const loadSet = step["load.set"];
+    if (loadSet && typeof loadSet.rps === "number") {
+      const factor = 0.8 + rng() * 0.4; // [0.8, 1.2]
+      loadSet.rps = Math.round(loadSet.rps * factor);
+    }
+  }
+
+  if (rng() < 0.5) {
+    const causalSeconds = causalStep ? parseAtSeconds(causalStep.at) : endSeconds;
+    const latestDecoyAt = Math.max(10, causalSeconds - 20);
+    const decoyAt = Math.round(10 + rng() * Math.max(1, latestDecoyAt - 10));
+    const service = DECOY_SERVICES[Math.floor(rng() * DECOY_SERVICES.length)];
+    const reason = DECOY_REASONS[Math.floor(rng() * DECOY_REASONS.length)];
+    variant.timeline.push({
+      at: `${decoyAt}s`,
+      deploy: { service, set: { "log.level": "debug" }, reason },
+    });
+  }
+
+  return variant;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -285,8 +367,13 @@ function latestManifestFor(incidentId: string): RunManifest | null {
   return JSON.parse(readFileSync(join(RUNS_DIR, files[files.length - 1]), "utf-8"));
 }
 
-async function cmdApply(incidentId: string, seed: number, control: boolean): Promise<void> {
-  const faultFile = loadFaultFile(incidentId);
+async function cmdApply(
+  incidentId: string,
+  seed: number,
+  control: boolean,
+  faultFileOverride?: FaultFile
+): Promise<string> {
+  const faultFile = faultFileOverride ?? loadFaultFile(incidentId);
   const params = pickParams(faultFile, seed);
   console.log(
     `[ilab] applying ${incidentId} with seed=${seed}, params=${JSON.stringify(params)}${control ? " (control run: skipping the causal step)" : ""}`
@@ -344,6 +431,7 @@ async function cmdApply(incidentId: string, seed: number, control: boolean): Pro
   const manifestPath = join(RUNS_DIR, `${incidentId}-seed${seed}${suffix}-${Date.now()}.json`);
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
   console.log(`[ilab] wrote run manifest: ${manifestPath}`);
+  return manifestPath;
 }
 
 async function cmdReset(incidentId: string): Promise<void> {
@@ -551,6 +639,66 @@ async function cmdVerifyAll(only?: string[]): Promise<void> {
   }
 }
 
+const RECORDER_PYTHON = process.env.RECORDER_PYTHON ?? join(FAULTS_DIR, "..", "..", "agent", "venv", "Scripts", "python.exe");
+
+async function recordManifest(manifestPath: string): Promise<void> {
+  const { execSync } = await import("node:child_process");
+  execSync(`"${RECORDER_PYTHON}" -m evals.recorder.record "${manifestPath}"`, {
+    stdio: "inherit",
+    cwd: join(FAULTS_DIR, "..", ".."),
+  });
+}
+
+/** apply (a seed-driven variant) -> record -> reset, for every incident,
+ * `variants` times each - real runs only, no counterfactuals (that's
+ * verify-all's job, not the dataset's). */
+async function cmdRecordAll(variants: number, only?: string[]): Promise<void> {
+  const incidents = only ? ALL_INCIDENTS.filter((spec) => only.includes(spec.id)) : ALL_INCIDENTS;
+  const results: { id: string; variant: number; ok: boolean }[] = [];
+
+  for (const spec of incidents) {
+    const baseFaultFile = loadFaultFile(spec.id);
+    for (let variant = 0; variant < variants; variant++) {
+      const variantSeed = spec.seed * 1000 + variant;
+      console.log(`\n[ilab] ==================== ${spec.id} variant ${variant} (seed=${variantSeed}) ====================`);
+      let ok = false;
+      try {
+        const variantFaultFile = buildVariantFaultFile(baseFaultFile, variantSeed);
+        const manifestPath = await cmdApply(spec.id, variantSeed, false, variantFaultFile);
+        await recordManifest(manifestPath);
+        ok = true;
+      } catch (error) {
+        console.error(`[ilab] ${spec.id} variant ${variant} errored: ${error instanceof Error ? error.message : error}`);
+      }
+      try {
+        await cmdReset(spec.id);
+      } catch (error) {
+        // A run this long can catch the host under real memory pressure at
+        // just the wrong moment - observed live as a transient DNS
+        // resolution failure inside the Docker network (EAI_AGAIN) that
+        // fetchWithRetry's own ~1-2s retry window didn't outlast. One
+        // longer-paused retry covers a brief spike without masking a real,
+        // persistent failure.
+        console.error(`[ilab] ${spec.id} variant ${variant} reset failed, retrying once after 10s: ${error instanceof Error ? error.message : error}`);
+        await sleep(10000);
+        try {
+          await cmdReset(spec.id);
+        } catch (retryError) {
+          console.error(`[ilab] ${spec.id} variant ${variant} reset failed again: ${retryError instanceof Error ? retryError.message : retryError}`);
+        }
+      }
+      results.push({ id: spec.id, variant, ok });
+    }
+  }
+
+  const okCount = results.filter((r) => r.ok).length;
+  console.log(`\n[ilab] record-all: ${okCount}/${results.length} bundles recorded`);
+  for (const r of results.filter((r) => !r.ok)) {
+    console.log(`  FAILED: ${r.id} variant ${r.variant}`);
+  }
+  if (okCount < results.length) process.exitCode = 1;
+}
+
 async function main(): Promise<void> {
   const [command, incidentId, ...rest] = process.argv.slice(2);
 
@@ -559,6 +707,18 @@ async function main(): Promise<void> {
     // itself without waiting through every incident's full timeline.
     const only = incidentId ? incidentId.split(",") : undefined;
     await cmdVerifyAll(only);
+  } else if (command === "record-all") {
+    // ilab record-all --variants 4 [INC-00,INC-05] - a flag and an optional
+    // filter, in either order, so this can't reuse the generic
+    // [command, incidentId, ...rest] destructuring above (that assumes
+    // position 2 is always the incident filter or absent, which isn't true
+    // once record-all's own --variants flag can occupy it instead).
+    const args = process.argv.slice(3);
+    const variantsFlagIndex = args.indexOf("--variants");
+    const variants = variantsFlagIndex >= 0 ? Number(args[variantsFlagIndex + 1]) : 4;
+    const positional = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--variants");
+    const only = positional.length > 0 ? positional[0].split(",") : undefined;
+    await cmdRecordAll(variants, only);
   } else if (command === "apply") {
     const seedFlagIndex = rest.indexOf("--seed");
     const seed = seedFlagIndex >= 0 ? Number(rest[seedFlagIndex + 1]) : Date.now();
@@ -571,7 +731,9 @@ async function main(): Promise<void> {
   } else if (command === "reset") {
     await cmdReset(incidentId);
   } else {
-    console.error("usage: ilab <apply|reset> <INC-ID> [--seed n] [--no-deploy|--control]  |  ilab verify-all");
+    console.error(
+      "usage: ilab <apply|reset> <INC-ID> [--seed n] [--no-deploy|--control]  |  ilab verify-all  |  ilab record-all --variants n"
+    );
     process.exitCode = 1;
   }
 }

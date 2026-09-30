@@ -1,0 +1,12 @@
+{
+  "name": "sqs-exporter",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1138.0",
+    "@incidentlab/runtime": "*",
+    "@opentelemetry/api": "^1.9.1"
+  }
+}

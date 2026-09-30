@@ -16,6 +16,10 @@ services:
     depends_on:
       floci:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - OTEL_SERVICE_NAME=order-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
@@ -23,6 +27,12 @@ services:
       - AWS_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=incidentlab
+      - PGPASSWORD=incidentlab
+      - PGDATABASE=incidentlab
+      - REDIS_URL=redis://redis:6379
 
   worker-service:
     build:
@@ -48,9 +58,21 @@ services:
       - "8080:80"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./infra/nginx/ratelimit.conf:/etc/nginx/conf.d/ratelimit.conf
+      - nginx_logs:/var/log/nginx
     profiles: ["sim"]
     depends_on:
       - order-service
+
+  alloy:
+    image: grafana/alloy:latest
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy
+      - nginx_logs:/var/log/nginx:ro
+    profiles: ["sim"]
+    depends_on:
+      - nginx
 
   postgres:
     image: postgres:16-alpine
@@ -67,6 +89,15 @@ services:
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     profiles: ["sim"]
 
+  redis:
+    image: redis:7-alpine
+    profiles: ["sim"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   mock-payment-provider:
     build:
       context: .
@@ -79,6 +110,13 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
       - LATENCY_MS=0
       - ERROR_RATE=0
+      # per-client rate limit (calls/sec) - real payment APIs have one. This
+      # is INC-01's feedback loop: removing backoff bunches retries close
+      # together in time, so the same total number of calls arrives in
+      # tighter bursts, depleting this budget and minting extra 429s that
+      # themselves need retrying.
+      - RATE_LIMIT_PER_SEC=15
+      - BUCKET_CAPACITY=8
 
   payment-service:
     build:
@@ -89,11 +127,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      toxiproxy:
+        condition: service_started
     environment:
       - OTEL_SERVICE_NAME=payment-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
-      - PGHOST=postgres
-      - PGPORT=5432
+      # routed through toxiproxy so INC-12 can simulate a real DB outage
+      # (proxy.toggle) without touching payment-service's own config.
+      - PGHOST=toxiproxy
+      - PGPORT=5433
       - PGUSER=incidentlab
       - PGPASSWORD=incidentlab
       - PGDATABASE=incidentlab
@@ -120,22 +162,48 @@ services:
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy
     command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    ports: ["8474:8474"]
     volumes:
       - ./infra/toxiproxy/toxiproxy.json:/config/toxiproxy.json
     profiles: ["sim"]
     depends_on:
       - mock-payment-provider
 
-  k6:
-    image: grafana/k6
-    command: ["run", "/scripts/orders.js"]
-    volumes:
-      - ./infra/loadgen/orders.js:/scripts/orders.js
+  loadgen:
+    build:
+      context: .
+      dockerfile: services/loadgen/Dockerfile
     profiles: ["sim"]
+    restart: unless-stopped
+    ports: ["3005:3005"]
     depends_on:
       - nginx
+    environment:
+      - OTEL_SERVICE_NAME=loadgen
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - RPS=5
+
+  sqs-exporter:
+    build:
+      context: .
+      dockerfile: services/sqs-exporter/Dockerfile
+    profiles: ["sim"]
+    restart: unless-stopped
+    depends_on:
+      floci:
+        condition: service_healthy
+    environment:
+      - OTEL_SERVICE_NAME=sqs-exporter
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318
+      - AWS_ENDPOINT_URL=http://floci:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
 
   otel-lgtm:
     image: grafana/otel-lgtm
     profiles: ["obs"]
     ports: ["3000:3000", "4317:4317", "4318:4318", "9090:9090", "3100:3100", "3200:3200"]
+
+volumes:
+  nginx_logs:

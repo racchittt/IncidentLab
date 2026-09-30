@@ -1,0 +1,33 @@
+id: INC-12
+timeline:
+  # The decoy: looks like "someone shipped something" right before things
+  # broke, but log.level isn't read by payment-service at all - it's a
+  # complete no-op. Deliberately NOT marked causal, so it runs in both the
+  # real and control apply.
+  - at: 235s
+    deploy:
+      service: payment-service
+      set: { log.level: debug }
+      reason: "increase log verbosity for debugging"
+  - at: 240s
+    causal: true
+    # proxy.toggle alone only stops NEW connections - existing pooled ones
+    # keep working until the pool's own idle-connection churn notices,
+    # which drifted 2-15+ seconds across real runs (see the gotcha in
+    # docs/milestone-5/incidents.md). reset_peer kills already-open
+    # connections immediately, making the onset deterministic.
+    proxy.toggle: { proxy: postgres, enabled: false }
+    toxic.add: { proxy: postgres, type: reset_peer, attributes: { timeout: 0 } }
+  - at: 280s
+    proxy.toggle: { proxy: postgres, enabled: true }
+    toxic.remove: { proxy: postgres, name: reset_peer_ilab }
+  - at: 320s
+    end: true
+phases:
+  baseline: ["0s", "235s"]
+  fault_onset: "240s"
+  fault_window: ["240s", "320s"]
+reset:
+  - rollback: all_created
+  - proxy.toggle: { proxy: postgres, enabled: true }
+    toxic.remove: { proxy: postgres, name: reset_peer_ilab }

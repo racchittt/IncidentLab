@@ -6,7 +6,14 @@ import { getConfig, startConfigPolling, onConfigChange } from "@incidentlab/runt
 import { retry } from "@incidentlab/runtime/src/resilience/retry";
 import { withTimeout } from "@incidentlab/runtime/src/resilience/timeout";
 import { CircuitBreaker } from "@incidentlab/runtime/src/resilience/circuitBreaker";
-import { retryAttempts, providerDuration, registerCircuitStateGauge, registerDbPoolGauges } from "./metrics";
+import {
+  retryAttempts,
+  providerDuration,
+  callsPerCharge,
+  retryDelay,
+  registerCircuitStateGauge,
+  registerDbPoolGauges,
+} from "./metrics";
 
 const app: Application = express();
 const PORT = 3003;
@@ -27,6 +34,41 @@ function buildBreaker(cfg: ReturnType<typeof getConfig>): CircuitBreaker {
   });
 }
 
+function hashOrderId(orderId: string): number {
+  let hash = 0;
+  for (let i = 0; i < orderId.length; i++) {
+    hash = (hash * 31 + orderId.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+/**
+ * Writes a compliance audit row for this charge, when ledger.auditWrites is
+ * on. The bug is deliberate: for about 0.5% of orders (a simulated
+ * constraint violation, the specific cause doesn't matter), this branch
+ * returns without releasing the checked-out client - INC-09's actual leak.
+ * Every other order releases it correctly via the finally block below. At
+ * steady traffic this drips out one leaked connection every couple of
+ * minutes; nothing looks wrong until the pool (max: db.poolMax) is finally
+ * exhausted, which shows up as a staircase in payment.db.pool.in_use long
+ * before anything actually breaks.
+ */
+async function writeAuditRow(orderId: string, amountCents: number): Promise<void> {
+  const client = await pool.connect();
+  if (hashOrderId(orderId) % 200 === 0) {
+    logger.error({ orderId }, "audit write failed");
+    return; // BUG: no client.release() - this connection is gone for the life of the pool
+  }
+  try {
+    await client.query(
+      `INSERT INTO audit_log (order_id, amount_cents) VALUES ($1, $2) ON CONFLICT (order_id) DO NOTHING`,
+      [orderId, amountCents]
+    );
+  } finally {
+    client.release();
+  }
+}
+
 app.use(express.json());
 
 app.post("/charges", async (req: Request, res: Response) => {
@@ -42,6 +84,7 @@ app.post("/charges", async (req: Request, res: Response) => {
   const cfg = getConfig();
 
   const startedAt = Date.now();
+  let providerCalls = 1; // the first attempt, before any retry
 
   try {
     const { ref } = await breaker.execute(() =>
@@ -66,6 +109,8 @@ app.post("/charges", async (req: Request, res: Response) => {
           baseMs: cfg.retryBaseMs,
           jitter: cfg.retryJitter,
           onAttempt: ({ attempt, delayMs, error }) => {
+            providerCalls++;
+            retryDelay.record(delayMs);
             retryAttempts.add(1, { outcome: "retry" });
             logger.warn({ orderId, attempt, delayMs, err: error }, "retrying provider charge");
           },
@@ -75,6 +120,7 @@ app.post("/charges", async (req: Request, res: Response) => {
 
     retryAttempts.add(1, { outcome: "success" });
     providerDuration.record(Date.now() - startedAt);
+    callsPerCharge.record(providerCalls);
 
     await pool.query(
       `INSERT INTO payments (order_id, amount_cents, status, provider_ref)
@@ -83,11 +129,16 @@ app.post("/charges", async (req: Request, res: Response) => {
       [orderId, amountCents, "charged", ref]
     );
 
+    if (cfg.ledgerAuditWrites) {
+      await writeAuditRow(orderId, amountCents);
+    }
+
     logger.info({ orderId, ref }, "payment charged");
     res.status(201).json({ orderId, status: "charged", ref });
   } catch (error: unknown) {
     retryAttempts.add(1, { outcome: "giveup" });
     providerDuration.record(Date.now() - startedAt);
+    callsPerCharge.record(providerCalls);
     logger.error({ orderId, err: error }, "charge failed");
     res.sendStatus(503);
   }
@@ -100,7 +151,7 @@ async function main(): Promise<void> {
 
   // Pool size is restart-required: constructed once from whatever was live at
   // startup. Changing db.poolMax needs deployctl's --restart, not a hot rebuild.
-  pool = new Pool({ max: getConfig().dbPoolMax });
+  pool = new Pool({ max: getConfig().dbPoolMax, connectionTimeoutMillis: 2000 });
   registerDbPoolGauges(pool);
 
   // Breaker threshold/openMs are hot in the sense that we rebuild the breaker in

@@ -8,6 +8,7 @@ export interface PaymentResilienceConfig {
   breakerThreshold: number;
   breakerOpenMs: number;
   dbPoolMax: number;
+  ledgerAuditWrites: boolean;
 }
 
 export interface ConfigMeta {
@@ -26,6 +27,7 @@ function envDefaults(): PaymentResilienceConfig {
     breakerThreshold: Number(process.env.PAYMENT_BREAKER_THRESHOLD ?? "5"),
     breakerOpenMs: Number(process.env.PAYMENT_BREAKER_OPEN_MS ?? "10000"),
     dbPoolMax: Number(process.env.DB_POOL_MAX ?? "10"),
+    ledgerAuditWrites: process.env.LEDGER_AUDIT_WRITES === "true",
   };
 }
 
@@ -39,6 +41,7 @@ function fromRegistryConfig(config: Record<string, any>): PaymentResilienceConfi
     breakerThreshold: config?.breaker?.threshold ?? fallback.breakerThreshold,
     breakerOpenMs: config?.breaker?.openMs ?? fallback.breakerOpenMs,
     dbPoolMax: config?.db?.poolMax ?? fallback.dbPoolMax,
+    ledgerAuditWrites: config?.ledger?.auditWrites ?? fallback.ledgerAuditWrites,
   };
 }
 

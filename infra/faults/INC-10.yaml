@@ -1,0 +1,16 @@
+id: INC-10
+timeline:
+  - at: 60s
+    causal: true
+    deploy:
+      service: nginx-gateway
+      set: { ratelimit.rate: "2r/s" }
+      reason: "tighten rate limiting"
+  - at: 180s
+    end: true
+phases:
+  baseline: ["0s", "60s"]
+  fault_onset: "60s"
+  fault_window: ["60s", "180s"]
+reset:
+  - rollback: all_created

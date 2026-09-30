@@ -91,6 +91,11 @@ async function cmdDeploy(argv: string[]): Promise<void> {
   console.log(`${deploy.change_id}  ${service}  v${deploy.version}`);
   console.log(JSON.stringify(deploy.diff, null, 2));
 
+  if (service === "nginx-gateway") {
+    const { renderNginxRateLimit } = await import("./nginxGateway");
+    await renderNginxRateLimit();
+  }
+
   if (restart) {
     console.log(`restarting ${service}...`);
     const { execSync } = await import("node:child_process");

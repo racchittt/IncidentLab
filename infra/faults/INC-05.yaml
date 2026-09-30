@@ -1,0 +1,20 @@
+id: INC-05
+timeline:
+  - at: 60s
+    causal: true
+    # Has to stay under payment-service's own 2000ms request timeout - go
+    # over that and every call times out, trips the circuit breaker, and
+    # then fails FAST (no real provider call at all), which erases the very
+    # latency signal this incident is supposed to produce.
+    toxic.add:
+      proxy: provider
+      type: latency
+      attributes: { latency: 1200 }
+  - at: 180s
+    end: true
+phases:
+  baseline: ["0s", "60s"]
+  fault_onset: "60s"
+  fault_window: ["60s", "180s"]
+reset:
+  - toxic.remove: { proxy: provider, name: latency_ilab }

@@ -21,6 +21,11 @@ Script: `infra/floci/spike-fidelity.ts`. Run with `npx tsx spike-fidelity.ts` (f
 
 Script: `infra/floci/spike-dlq.ts`. Run with `npx tsx spike-dlq.ts` (floci must be up).
 
+**Q4: Does floci return `ApproximateAgeOfOldestMessage` on `GetQueueAttributes`?**
+- Answer: No.
+- Evidence: `services/sqs-exporter` requests both `ApproximateNumberOfMessages` and `ApproximateAgeOfOldestMessage` every poll. `ApproximateNumberOfMessages` comes back populated every time; `ApproximateAgeOfOldestMessage` is simply absent from the response (not zero — the key isn't there at all).
+- Because of this: `sqs.queue.age_of_oldest_message` is wired up and will work against real AWS, but stays empty against floci. `sqs.queue.depth` is the metric any fault relying on backlog evidence (e.g. INC-08) should use.
+
 ## Spike B: Can a small local model be your cheap router?
 
 Same 20 hand-labeled `next_tool` scenarios (`evals/spikes/scenarios.json`) run through three backends: a local `qwen2.5:3b` via Ollama with a JSON schema forced through `format=`, and Jev/Laya via the existing controller layer (`agent/controller/`).

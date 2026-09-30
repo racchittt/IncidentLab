@@ -12,6 +12,7 @@ import {
 } from "@aws-sdk/client-sqs";
 import { logger } from "@incidentlab/runtime/src/logger";
 import { waitFor } from "@incidentlab/runtime/src/waitFor";
+import { ordersFulfilled } from "./metrics";
 
 const ddb = new DynamoDBClient({});
 const sqs = new SQSClient({ useQueueUrlAsEndpoint: false });
@@ -26,6 +27,26 @@ const MAX_RECEIVE_COUNT = 3;
 const WORKER_CONCURRENCY = Math.min(Number(process.env.WORKER_CONCURRENCY ?? "5"), 10);
 
 const PAYMENT_SERVICE_URL = "http://payment-service:3003/charges";
+const DEPLOY_REGISTRY_URL = process.env.DEPLOY_REGISTRY_URL ?? "http://deploy-registry:3004";
+
+// INC-08's whole mechanism: this is read fresh from config, so a deploy can
+// point the worker at a different (freshly-created, always-empty) queue
+// without ever restarting it or logging anything that looks like a failure.
+let queueName = ORDERS_PLACED_QUEUE;
+
+async function pollWorkerServiceConfig(): Promise<void> {
+  try {
+    const res = await fetch(`${DEPLOY_REGISTRY_URL}/config/worker-service`);
+    if (res.ok) {
+      const body = await res.json();
+      if (typeof body.config?.queue?.name === "string") {
+        queueName = body.config.queue.name;
+      }
+    }
+  } catch {
+    // Registry unreachable: keep the last known queue name rather than throw.
+  }
+}
 
 async function chargeOrder(orderId: string, amountCents: number): Promise<void> {
   const response = await fetch(PAYMENT_SERVICE_URL, {
@@ -54,6 +75,7 @@ async function fulfillOrder(orderId: string): Promise<void> {
         },
       })
     );
+    ordersFulfilled.add(1);
     logger.info({ orderId }, "order fulfilled");
   } catch (error: unknown) {
     if ((error as { name?: string })?.name === "ConditionalCheckFailedException") {
@@ -134,8 +156,29 @@ async function ensureDlqRedrivePolicy(sourceQueueUrl: string): Promise<void> {
   );
 }
 
+let resolvedQueueName: string | null = null;
+let resolvedQueueUrl: string;
+
+/** Re-resolves the queue URL only when queueName actually changes - CreateQueueCommand
+ * is idempotent (returns the existing queue if one exists, creates a fresh empty one
+ * if it doesn't), which is exactly INC-08's mechanism: pointing this at a name nobody's
+ * ever enqueued to just gets you a real, valid, permanently-empty queue. */
+async function resolveQueueUrl(): Promise<string> {
+  if (queueName === resolvedQueueName) {
+    return resolvedQueueUrl;
+  }
+  const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: queueName }));
+  if (!QueueUrl) {
+    throw new Error(`Failed to retrieve QueueUrl for ${queueName} queue.`);
+  }
+  logger.info({ queueName, QueueUrl }, "worker now polling queue");
+  resolvedQueueName = queueName;
+  resolvedQueueUrl = QueueUrl;
+  return QueueUrl;
+}
+
 async function main(): Promise<void> {
-  const QueueUrl = await waitFor(async () => {
+  const ordersPlacedQueueUrl = await waitFor(async () => {
     const { QueueUrl } = await sqs.send(new CreateQueueCommand({ QueueName: ORDERS_PLACED_QUEUE }));
     if (!QueueUrl) {
       throw new Error("Failed to retrieve QueueUrl for orders-placed queue.");
@@ -146,12 +189,18 @@ async function main(): Promise<void> {
   // floci honors SQS's RedrivePolicy natively (confirmed in infra/floci/spike-dlq.ts,
   // see evals/reports/p0-spikes.md) - after MAX_RECEIVE_COUNT failed receives, SQS
   // itself moves the message to orders-placed-dlq. We just have to not delete a
-  // message we failed to process, and let redelivery run its course.
-  await ensureDlqRedrivePolicy(QueueUrl);
+  // message we failed to process, and let redelivery run its course. This is always
+  // set up against the real orders-placed queue, independent of which queue the
+  // receive loop below is currently pointed at.
+  await ensureDlqRedrivePolicy(ordersPlacedQueueUrl);
 
-  logger.info({ concurrency: WORKER_CONCURRENCY }, "worker-service started");
+  await pollWorkerServiceConfig();
+  setInterval(pollWorkerServiceConfig, 5000);
+
+  logger.info({ concurrency: WORKER_CONCURRENCY, queueName }, "worker-service started");
 
   while (true) {
+    const QueueUrl = await resolveQueueUrl();
     const { Messages } = await sqs.send(
       new ReceiveMessageCommand({
         QueueUrl,

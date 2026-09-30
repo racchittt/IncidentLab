@@ -1,0 +1,18 @@
+id: INC-00
+# The negative control: normal load, one harmless deploy, nothing breaks.
+# No causal step - there's no incident here, and this file has no --no-deploy
+# counterfactual for the same reason (there's nothing to prove absent).
+timeline:
+  - at: 100s
+    deploy:
+      service: payment-service
+      set: { log.level: debug }
+      reason: "increase log verbosity for debugging"
+  - at: 200s
+    end: true
+phases:
+  baseline: ["0s", "100s"]
+  fault_onset: "100s"
+  fault_window: ["100s", "200s"]
+reset:
+  - rollback: all_created

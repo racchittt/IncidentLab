@@ -1,0 +1,27 @@
+{
+  "services": [
+    "nginx-gateway",
+    "order-service",
+    "worker-service",
+    "payment-service",
+    "mock-payment-provider",
+    "deploy-registry",
+    "loadgen",
+    "sqs-exporter"
+  ],
+  "edges": [
+    { "from": "loadgen", "to": "nginx-gateway" },
+    { "from": "nginx-gateway", "to": "order-service" },
+    { "from": "order-service", "to": "dynamodb" },
+    { "from": "order-service", "to": "sqs" },
+    { "from": "order-service", "to": "redis" },
+    { "from": "order-service", "to": "postgres" },
+    { "from": "worker-service", "to": "dynamodb" },
+    { "from": "worker-service", "to": "sqs" },
+    { "from": "worker-service", "to": "payment-service" },
+    { "from": "payment-service", "to": "mock-payment-provider" },
+    { "from": "payment-service", "to": "postgres" },
+    { "from": "sqs-exporter", "to": "sqs" },
+    { "from": "deploy-registry", "to": "postgres" }
+  ]
+}

@@ -4,3 +4,4 @@ dcs/
 venv
 __pycache__
 runs/
+evals/bundles/

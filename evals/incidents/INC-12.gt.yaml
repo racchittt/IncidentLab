@@ -1,0 +1,12 @@
+id: INC-12
+alert: "payment-service: elevated 5xx error rate, charges failing"
+root_cause:
+  service: "postgres (network)"
+  fault_category: infrastructure_blip
+  change: null
+required_evidence:
+  - "metric:payment-service:http_server_request_duration_seconds_count"
+  - "log:payment-service:*"
+acceptable_evidence: []
+decoys:
+  - "deploy:{decoy_change_ids}"

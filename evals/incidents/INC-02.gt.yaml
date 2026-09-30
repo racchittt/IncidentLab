@@ -1,0 +1,12 @@
+id: INC-02
+alert: "order-service: elevated 5xx rate on POST /orders"
+root_cause:
+  service: order-service
+  fault_category: capacity_exhaustion
+  change: null
+required_evidence:
+  - "metric:order-service:http_server_request_duration_seconds_count"
+  - "log:order-service:*"
+acceptable_evidence:
+  - "log:nginx-gateway:*"
+decoys: []

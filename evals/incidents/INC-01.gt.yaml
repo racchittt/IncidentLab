@@ -1,0 +1,14 @@
+id: INC-01
+alert: "payment-service: charge success rate dropped and giveups rising"
+root_cause:
+  service: payment-service
+  fault_category: retry_misconfiguration
+  change: causal
+required_evidence:
+  - "deploy:{causal_change_id}"
+  - "metric:payment-service:payment_retry_attempts_total"
+  - "metric:mock-payment-provider:*429*"
+acceptable_evidence:
+  - "log:payment-service:*"
+  - "metric:payment-service:payment_provider_duration_milliseconds_bucket"
+decoys: []

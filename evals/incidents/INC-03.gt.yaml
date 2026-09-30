@@ -1,0 +1,14 @@
+id: INC-03
+alert: "order-service: POST /orders latency spike, p95 well above normal"
+root_cause:
+  service: order-service
+  fault_category: cache_stampede
+  change: causal
+required_evidence:
+  - "deploy:{causal_change_id}"
+  - "metric:order-service:http_server_request_duration_seconds_bucket"
+  - "metric:order-service:order_db_pool_waiting"
+acceptable_evidence:
+  - "metric:order-service:order_cache_requests_total"
+  - "metric:order-service:order_db_pool_in_use"
+decoys: []

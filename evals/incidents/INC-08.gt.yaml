@@ -1,0 +1,14 @@
+id: INC-08
+alert: "worker-service: order fulfilment rate has dropped to zero"
+root_cause:
+  service: worker-service
+  fault_category: misrouted_messaging
+  change: causal
+required_evidence:
+  - "deploy:{causal_change_id}"
+  - "metric:order-service:orders_created_total"
+  - "metric:worker-service:orders_fulfilled_total"
+  - "metric:sqs-exporter:sqs_queue_depth"
+acceptable_evidence:
+  - "metric:sqs-exporter:sqs_queue_age_of_oldest_message"
+decoys: []

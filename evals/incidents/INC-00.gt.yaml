@@ -1,0 +1,12 @@
+id: INC-00
+alert: "payment-service: automated review triggered by a production config change"
+root_cause:
+  service: none
+  fault_category: no_incident
+  change: null
+required_evidence: []
+acceptable_evidence:
+  - "deploy:{decoy_change_ids}"
+  - "metric:payment-service:http_server_request_duration_seconds_count"
+decoys:
+  - "deploy:{decoy_change_ids}"

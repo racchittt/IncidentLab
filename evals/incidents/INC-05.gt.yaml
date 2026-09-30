@@ -1,0 +1,12 @@
+id: INC-05
+alert: "payment-service: charge latency degraded, p95 well above normal"
+root_cause:
+  service: mock-payment-provider
+  fault_category: dependency_degradation
+  change: null
+required_evidence:
+  - "metric:payment-service:payment_provider_duration_milliseconds_bucket"
+  - "trace:payment-service:POST"
+acceptable_evidence:
+  - "log:payment-service:*"
+decoys: []

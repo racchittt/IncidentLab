@@ -1,0 +1,12 @@
+id: INC-10
+alert: "nginx-gateway: spike in 429 responses to clients"
+root_cause:
+  service: nginx-gateway
+  fault_category: rate_limit_misconfiguration
+  change: causal
+required_evidence:
+  - "deploy:{causal_change_id}"
+  - "log:nginx-gateway:*429*"
+acceptable_evidence:
+  - "metric:order-service:http_server_request_duration_seconds_count"
+decoys: []

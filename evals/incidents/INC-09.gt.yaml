@@ -1,0 +1,13 @@
+id: INC-09
+alert: "payment-service: intermittent charge failures, error rate climbing slowly"
+root_cause:
+  service: payment-service
+  fault_category: resource_leak
+  change: causal
+required_evidence:
+  - "deploy:{causal_change_id}"
+  - "metric:payment-service:payment_db_pool_in_use"
+  - "log:payment-service:*"
+acceptable_evidence:
+  - "metric:payment-service:http_server_request_duration_seconds_count"
+decoys: []

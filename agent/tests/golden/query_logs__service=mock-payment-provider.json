@@ -1,0 +1,18 @@
+[
+  {
+    "key": "log:mock-payment-provider:5bab2cb4",
+    "summary": "2942 occurrences of \"charge succeeded\". Examples: 'charge succeeded'; 'charge succeeded'"
+  },
+  {
+    "key": "log:mock-payment-provider:bb079266",
+    "summary": "529 occurrences of \"charge failed (simulated)\". Examples: 'charge failed (simulated)'; 'charge failed (simulated)'"
+  },
+  {
+    "key": "log:mock-payment-provider:3d2f4392",
+    "summary": "454 occurrences of \"charge rejected (rate limited)\". Examples: 'charge rejected (rate limited)'; 'charge rejected (rate limited)'"
+  },
+  {
+    "key": "log:mock-payment-provider:c5210e3c",
+    "summary": "1 occurrences of \"mock-payment-provider config updated\". Examples: 'mock-payment-provider config updated'"
+  }
+]

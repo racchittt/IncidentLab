@@ -55,6 +55,11 @@ class GroundTruth(BaseModel):
     # run can have more than one (the incident's own decoy, if it has one,
     # plus Task 5's randomly injected extra decoy).
     decoys: list[str] = []
+    # A worked human walkthrough's tool-call sequence, written down the
+    # first time someone actually solves the incident from tool outputs
+    # alone (agent/tools/backend.py's own "Done when"). Optional - only
+    # incidents that have been walked through this way have one.
+    expected_path: list[str] | None = None
 
     _check_required = field_validator("required_evidence")(_check_evidence_keys)
     _check_acceptable = field_validator("acceptable_evidence")(_check_evidence_keys)

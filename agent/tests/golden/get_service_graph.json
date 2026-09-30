@@ -1,0 +1,6 @@
+[
+  {
+    "key": "topology:graph",
+    "summary": "loadgen -> nginx-gateway; nginx-gateway -> order-service; order-service -> dynamodb; order-service -> sqs; order-service -> redis; order-service -> postgres; worker-service -> dynamodb; worker-service -> sqs; worker-service -> payment-service; payment-service -> mock-payment-provider; payment-service -> postgres; sqs-exporter -> sqs; deploy-registry -> postgres"
+  }
+]

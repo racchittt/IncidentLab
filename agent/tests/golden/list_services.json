@@ -1,0 +1,6 @@
+[
+  {
+    "key": "topology:services",
+    "summary": "deploy-registry, loadgen, mock-payment-provider, nginx-gateway, order-service, payment-service, sqs-exporter, worker-service"
+  }
+]

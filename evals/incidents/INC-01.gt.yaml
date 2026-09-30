@@ -10,5 +10,18 @@ required_evidence:
   - "metric:mock-payment-provider:*429*"
 acceptable_evidence:
   - "log:payment-service:*"
+  - "log:mock-payment-provider:*"
   - "metric:payment-service:payment_provider_duration_milliseconds_bucket"
 decoys: []
+# From a real hand walkthrough against the recorded INC-01 bundle
+# (agent/tools/backend.py's own "Done when" - if a human can't solve it
+# from tool outputs alone, an agent can't either). The mock-payment-
+# provider "charge rejected (rate limited)" log line turned out to be
+# cleaner corroborating evidence than the raw 429 metric rate, which is
+# bursty enough (the token bucket's burst/refill) that it isn't always
+# monotonically "up" during the fault window.
+expected_path:
+  - "query_metrics(payment-service, payment_retry_attempts_total)"
+  - "list_deployments(payment-service)"
+  - "get_change_diff(<the one retry.baseMs/retry.jitter change_id>)"
+  - "query_logs(mock-payment-provider)"

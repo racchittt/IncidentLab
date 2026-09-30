@@ -1,0 +1,14 @@
+[
+  {
+    "key": "trace:payment-service:POST /charges",
+    "summary": "9 spans, p95 duration 1962.7ms"
+  },
+  {
+    "key": "trace:payment-service:middleware - patched",
+    "summary": "9 spans, p95 duration 1962.5ms"
+  },
+  {
+    "key": "trace:payment-service:request handler - /charges",
+    "summary": "18 spans, p95 duration 1962.5ms"
+  }
+]

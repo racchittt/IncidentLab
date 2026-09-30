@@ -1,0 +1,146 @@
+[
+  {
+    "key": "metric:payment-service:db_client_connection_count",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:db_client_connection_max",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:db_client_connection_pending_requests",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:db_client_operation_duration_seconds",
+    "summary": "available views: p50, p95, p99"
+  },
+  {
+    "key": "metric:payment-service:db_client_operation_duration_seconds_count",
+    "summary": "available views: rate"
+  },
+  {
+    "key": "metric:payment-service:http_client_request_duration_seconds",
+    "summary": "available views: p50, p95, p99"
+  },
+  {
+    "key": "metric:payment-service:http_client_request_duration_seconds_count",
+    "summary": "available views: rate"
+  },
+  {
+    "key": "metric:payment-service:http_server_request_duration_seconds",
+    "summary": "available views: p50, p95, p99"
+  },
+  {
+    "key": "metric:payment-service:http_server_request_duration_seconds_count",
+    "summary": "available views: rate:http_response_status_code=201, rate:http_response_status_code=503"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_delay_max_seconds",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_delay_mean_seconds",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_delay_min_seconds",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_delay_p50_seconds",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_delay_p90_seconds",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_delay_p99_seconds",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_delay_stddev_seconds",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_time_seconds_total",
+    "summary": "available views: rate"
+  },
+  {
+    "key": "metric:payment-service:nodejs_eventloop_utilization_ratio",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:payment_circuit_state",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:payment_db_pool_in_use",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:payment_db_pool_waiting",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:payment_provider_calls_per_charge",
+    "summary": "available views: p50, p95, p99"
+  },
+  {
+    "key": "metric:payment-service:payment_provider_calls_per_charge_count",
+    "summary": "available views: rate"
+  },
+  {
+    "key": "metric:payment-service:payment_provider_duration_milliseconds",
+    "summary": "available views: p50, p95, p99"
+  },
+  {
+    "key": "metric:payment-service:payment_provider_duration_milliseconds_count",
+    "summary": "available views: rate"
+  },
+  {
+    "key": "metric:payment-service:payment_retry_attempts_total",
+    "summary": "available views: rate:outcome=giveup, rate:outcome=retry, rate:outcome=success"
+  },
+  {
+    "key": "metric:payment-service:payment_retry_delay_milliseconds",
+    "summary": "available views: p50, p95, p99"
+  },
+  {
+    "key": "metric:payment-service:payment_retry_delay_milliseconds_count",
+    "summary": "available views: rate"
+  },
+  {
+    "key": "metric:payment-service:target_info",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:v8js_gc_duration_seconds",
+    "summary": "available views: p50, p95, p99"
+  },
+  {
+    "key": "metric:payment-service:v8js_gc_duration_seconds_count",
+    "summary": "available views: rate"
+  },
+  {
+    "key": "metric:payment-service:v8js_memory_heap_space_available_size_bytes",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:v8js_memory_heap_space_physical_size_bytes",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:v8js_memory_heap_space_size_bytes",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:v8js_memory_heap_used_bytes",
+    "summary": "available views: raw"
+  },
+  {
+    "key": "metric:payment-service:v8js_resource_active",
+    "summary": "available views: raw"
+  }
+]

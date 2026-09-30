@@ -1,0 +1,22 @@
+[
+  {
+    "key": "log:payment-service:31ef0314",
+    "summary": "2940 occurrences of \"payment charged\". Examples: 'payment charged'; 'payment charged'"
+  },
+  {
+    "key": "log:payment-service:4e7cbecf",
+    "summary": "972 occurrences of \"retrying provider charge\". Examples: 'retrying provider charge'; 'retrying provider charge'"
+  },
+  {
+    "key": "log:payment-service:defe0ac2",
+    "summary": "11 occurrences of \"charge failed\". Examples: 'charge failed'; 'charge failed'"
+  },
+  {
+    "key": "log:payment-service:57d496e1",
+    "summary": "1 occurrences of \"config applied\". Examples: 'config applied'"
+  },
+  {
+    "key": "log:payment-service:f4bf3966",
+    "summary": "1 occurrences of \"circuit breaker rebuilt from live config\". Examples: 'circuit breaker rebuilt from live config'"
+  }
+]

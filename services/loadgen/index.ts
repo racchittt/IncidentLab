@@ -12,12 +12,17 @@ const ORDERS_URL = process.env.ORDERS_URL ?? "http://nginx/orders";
 // fault file needs a live-adjustable rate, not a fixed k6 scenario.
 let rps = Number(process.env.RPS ?? "5");
 
-// INC-03's traffic shape: mostly a handful of hot products (matching
-// products 1-3 in infra/postgres/init.sql), so a cache expiry hits many
-// concurrent requests instead of being spread thin across the catalog.
-const HOT_PRODUCT_IDS = [1, 2, 3];
+// INC-03's traffic shape: one hot product (matching product 1 in
+// infra/postgres/init.sql) takes most of the traffic, so a single cache
+// expiry concentrates enough simultaneous misses to actually queue on
+// order-service's pool (15rps * 0.7 * 0.4s pg_sleep =~ 4 concurrent misses
+// vs. a pool of 2) instead of just nudging pool_in_use. Spreading the same
+// share across 3 hot products (the original shape) diluted every expiry to
+// ~1.4 concurrent misses each - a real but customer-invisible signal, per
+// review feedback on the first build.
+const HOT_PRODUCT_IDS = [1];
 const ALL_PRODUCT_IDS = Array.from({ length: 20 }, (_, i) => i + 1);
-const HOT_TRAFFIC_SHARE = 0.8;
+const HOT_TRAFFIC_SHARE = 0.7;
 
 function pickProductId(): number {
   const pool = Math.random() < HOT_TRAFFIC_SHARE ? HOT_PRODUCT_IDS : ALL_PRODUCT_IDS;

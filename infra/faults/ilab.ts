@@ -93,7 +93,19 @@ interface RunManifest {
   params: Record<string, number>;
   startedAt: string;
   endedAt: string;
+  /** Every deploy this run created - the union of causalChangeIds and
+   * decoyChangeIds below. Kept for anything that doesn't care which is
+   * which (e.g. cmdReset's rollback-everything loop). */
   changeIds: string[];
+  /** Deploys from timeline steps marked causal: true - the actual root
+   * cause. Ground truth (Phase 2's recorder) resolves "root_cause.change"
+   * from this, not from changeIds, since a run can also contain decoys. */
+  causalChangeIds: string[];
+  /** Every other deploy this run created - real config changes that
+   * happened during the incident but aren't why it happened. An agent (or
+   * a scorer) that cites one of these as the root cause should be marked
+   * wrong, which is the entire point of recording them separately. */
+  decoyChangeIds: string[];
   phases?: Record<string, string | [string, string]>;
 }
 
@@ -282,6 +294,8 @@ async function cmdApply(incidentId: string, seed: number, control: boolean): Pro
 
   const startedAt = new Date().toISOString();
   const changeIds: string[] = [];
+  const causalChangeIds: string[] = [];
+  const decoyChangeIds: string[] = [];
 
   let elapsed = 0;
   const sorted = [...faultFile.timeline].sort((a, b) => parseAtSeconds(a.at) - parseAtSeconds(b.at));
@@ -300,7 +314,9 @@ async function cmdApply(incidentId: string, seed: number, control: boolean): Pro
     } else {
       await runSideEffects(step, params);
       if (step.deploy) {
-        changeIds.push(await postDeploy(step.deploy));
+        const changeId = await postDeploy(step.deploy);
+        changeIds.push(changeId);
+        (step.causal ? causalChangeIds : decoyChangeIds).push(changeId);
       }
     }
 
@@ -319,6 +335,8 @@ async function cmdApply(incidentId: string, seed: number, control: boolean): Pro
     startedAt,
     endedAt,
     changeIds,
+    causalChangeIds,
+    decoyChangeIds,
     phases: resolvePhases(startedAt, faultFile.phases),
   };
 

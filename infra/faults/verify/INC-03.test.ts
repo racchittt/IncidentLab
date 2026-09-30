@@ -65,11 +65,19 @@ describe("INC-03 verification", () => {
     // (~1.5-2) don't reliably exceed the pool's capacity - db_pool_waiting
     // stays at 0 in both baseline and fault window, so it isn't a usable
     // signal here. db_pool_in_use does move, but only briefly (real numbers:
-    // baseline avg 0, fault avg ~0.15) - promAvgOverTime (avg_over_time on
-    // raw samples), not promAvg (which averages a query_range call's own
-    // discretized points and can step right over a signal this brief).
+    // baseline avg ~0.04, fault avg ~0.15-0.2) - promAvgOverTime
+    // (avg_over_time on raw samples), not promAvg (which averages a
+    // query_range call's own discretized points and can step right over a
+    // signal this brief). Unlike the hit ratio above, this isn't restricted
+    // to the back half of the fault window: pool contention doesn't need the
+    // TTL to cycle first, it just needs concurrent misses, which start as
+    // soon as the short TTL takes effect. Narrowing to the back half made
+    // this genuinely flaky - a signal this sparse (a handful of 5s-interval
+    // scrapes catching a brief blip) can land on either side of an
+    // avg_over_time query's exclusive left boundary more or less at random,
+    // and a real run caught 4 of its 6 nonzero samples before the midpoint.
     const baselinePoolInUse = await promAvgOverTime(POOL_IN_USE_QUERY, baselineStart, baselineEnd);
-    const afterPoolInUse = await promAvgOverTime(POOL_IN_USE_QUERY, lateFaultStart, faultEnd);
+    const afterPoolInUse = await promAvgOverTime(POOL_IN_USE_QUERY, faultStart, faultEnd);
     expect(afterPoolInUse).toBeGreaterThan(baselinePoolInUse);
   });
 

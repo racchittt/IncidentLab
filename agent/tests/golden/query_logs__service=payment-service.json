@@ -1,22 +1,26 @@
 [
   {
     "key": "log:payment-service:31ef0314",
-    "summary": "2940 occurrences of \"payment charged\". Examples: 'payment charged'; 'payment charged'"
+    "summary": "2786 occurrences of \"payment charged\". Examples: 'payment charged'; 'payment charged'"
   },
   {
     "key": "log:payment-service:4e7cbecf",
-    "summary": "972 occurrences of \"retrying provider charge\". Examples: 'retrying provider charge'; 'retrying provider charge'"
+    "summary": "1412 occurrences of \"retrying provider charge\". Examples: 'retrying provider charge'; 'retrying provider charge'"
   },
   {
     "key": "log:payment-service:defe0ac2",
-    "summary": "11 occurrences of \"charge failed\". Examples: 'charge failed'; 'charge failed'"
+    "summary": "183 occurrences of \"charge failed\". Examples: 'charge failed'; 'charge failed'"
+  },
+  {
+    "key": "log:payment-service:896cedb7",
+    "summary": "3 occurrences of \"circuit breaker state changed\". Examples: 'circuit breaker state changed'; 'circuit breaker state changed'"
   },
   {
     "key": "log:payment-service:57d496e1",
-    "summary": "1 occurrences of \"config applied\". Examples: 'config applied'"
+    "summary": "2 occurrences of \"config applied\". Examples: 'config applied'; 'config applied'"
   },
   {
     "key": "log:payment-service:f4bf3966",
-    "summary": "1 occurrences of \"circuit breaker rebuilt from live config\". Examples: 'circuit breaker rebuilt from live config'"
+    "summary": "2 occurrences of \"circuit breaker rebuilt from live config\". Examples: 'circuit breaker rebuilt from live config'; 'circuit breaker rebuilt from live config'"
   }
 ]

@@ -1,14 +1,14 @@
 [
   {
     "key": "metric:payment-service:payment_retry_attempts_total",
-    "summary": "[rate:outcome=giveup] baseline mean 0, last 5 min mean 0.021 (+inf%), change began ~19:57:33"
+    "summary": "[rate:outcome=giveup] baseline mean 0, last 5 min mean 0.423 (+inf%), change began ~10:35:33"
   },
   {
     "key": "metric:payment-service:payment_retry_attempts_total",
-    "summary": "[rate:outcome=retry] baseline mean 1.1, last 5 min mean 2.93 (+167%), change began ~19:57:03"
+    "summary": "[rate:outcome=retry] baseline mean 1.63, last 5 min mean 4.2 (+158%), change began ~10:32:48"
   },
   {
     "key": "metric:payment-service:payment_retry_attempts_total",
-    "summary": "[rate:outcome=success] baseline mean 7.49, last 5 min mean 9.28 (+24%), change began ~no clear onset detected"
+    "summary": "[rate:outcome=success] baseline mean 9.28, last 5 min mean 9.59 (+3%), change began ~10:33:33"
   }
 ]

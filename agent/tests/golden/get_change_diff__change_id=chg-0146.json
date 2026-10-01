@@ -1,6 +1,0 @@
-[
-  {
-    "key": "deploy:chg-0146",
-    "summary": "payment-service at 2026-09-30T19:59:33.362Z: retry.baseMs: 100 -> 0; retry.jitter: full -> none. Reason: reduce checkout latency"
-  }
-]

@@ -4,4 +4,5 @@ dcs/
 venv
 __pycache__
 runs/
-evals/bundles/
+evals/bundles/*
+!evals/bundles/README.md

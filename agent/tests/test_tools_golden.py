@@ -21,9 +21,11 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 BUNDLES_DIR = REPO_ROOT / "evals" / "bundles"
 GOLDEN_DIR = Path(__file__).parent / "golden"
 
-# The one retry.baseMs/retry.jitter change in the INC-01 bundle this was
-# recorded against (evals/incidents/INC-01.gt.yaml's expected_path).
-CAUSAL_CHANGE_ID = "chg-0146"
+# The retry.baseMs/retry.jitter change that's this bundle's own causal
+# deploy (evals/incidents/INC-01.gt.yaml's expected_path) - re-pin this
+# whenever the golden files get regenerated against a new "latest" INC-01
+# bundle, since change_ids aren't stable across a registry rebuild.
+CAUSAL_CHANGE_ID = "chg-0029"
 
 CALLS: list[tuple[str, dict]] = [
     ("list_services", {}),

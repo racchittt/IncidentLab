@@ -1,14 +1,30 @@
 [
   {
-    "key": "deploy:chg-0144",
-    "summary": "payment-service at 2026-09-30T19:33:23.125Z, changed: log.level"
+    "key": "deploy:chg-0020",
+    "summary": "payment-service at 2026-10-01T10:04:50.804Z, changed: retry.baseMs, retry.jitter"
   },
   {
-    "key": "deploy:chg-0145",
-    "summary": "payment-service at 2026-09-30T19:34:59.073Z, changed: log.level"
+    "key": "deploy:chg-0021",
+    "summary": "payment-service at 2026-10-01T10:10:49.122Z, changed: retry.baseMs, retry.jitter"
   },
   {
-    "key": "deploy:chg-0146",
-    "summary": "payment-service at 2026-09-30T19:59:33.362Z, changed: retry.baseMs, retry.jitter"
+    "key": "deploy:chg-0023",
+    "summary": "payment-service at 2026-10-01T10:14:33.169Z, changed: retry.baseMs, retry.jitter"
+  },
+  {
+    "key": "deploy:chg-0024",
+    "summary": "payment-service at 2026-10-01T10:21:13.367Z, changed: retry.baseMs, retry.jitter"
+  },
+  {
+    "key": "deploy:chg-0026",
+    "summary": "payment-service at 2026-10-01T10:25:16.427Z, changed: retry.baseMs, retry.jitter"
+  },
+  {
+    "key": "deploy:chg-0027",
+    "summary": "payment-service at 2026-10-01T10:31:33.927Z, changed: retry.baseMs, retry.jitter"
+  },
+  {
+    "key": "deploy:chg-0029",
+    "summary": "payment-service at 2026-10-01T10:35:20.967Z, changed: retry.baseMs, retry.jitter"
   }
 ]
